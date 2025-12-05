@@ -1,5 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 
+// Declare process to fix "Cannot find name 'process'" error in client-side build
+declare const process: {
+  env: {
+    API_KEY: string;
+    [key: string]: string | undefined;
+  }
+};
+
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 /**
@@ -105,7 +113,8 @@ export const getLiveExchangeRate = async (): Promise<{ rate: string; source: str
     
     if (chunks && chunks.length > 0) {
       const webChunk = chunks.find((c: any) => c.web);
-      if (webChunk?.web) {
+      // Added check to ensure uri exists before passing to URL constructor to fix TS2345
+      if (webChunk?.web?.uri) {
         source = webChunk.web.title || new URL(webChunk.web.uri).hostname;
       }
     }

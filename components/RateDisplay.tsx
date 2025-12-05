@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, TrendingUp, DollarSign } from 'lucide-react';
+import { RefreshCw, TrendingUp } from 'lucide-react';
 import { getLiveExchangeRate } from '../services/geminiService';
 
 const RateDisplay: React.FC = () => {

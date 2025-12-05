@@ -5,7 +5,7 @@ import {
   Table, Sheet, FileJson, Mail, Calculator, 
   PaintBucket, Lock, Unlock, Eraser, FileText, 
   Search, Eye, EyeOff, BarChart, Save, Database,
-  ArrowRight, PlusCircle, Home, AlertTriangle
+  ArrowRight, Home, AlertTriangle
 } from 'lucide-react';
 import { generateExcelMacro } from '../services/geminiService';
 
