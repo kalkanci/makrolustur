@@ -26,7 +26,6 @@ const CodeGenerator: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [showHistory, setShowHistory] = useState<boolean>(true); // Mobile toggling could be added
   const [refinementMode, setRefinementMode] = useState<boolean>(false);
 
   // Load history from local storage on mount
@@ -106,7 +105,7 @@ const CodeGenerator: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-140px)] gap-6">
+    <div className="flex flex-col lg:flex-row lg:h-[calc(100vh-140px)] gap-6">
       
       {/* LEFT SIDEBAR: History & Templates */}
       <div className="lg:w-80 w-full flex flex-col gap-4 shrink-0">
@@ -123,7 +122,6 @@ const CodeGenerator: React.FC = () => {
                 key={idx}
                 onClick={() => {
                   setPrompt(t.prompt);
-                  // Optional: Auto submit? Let's verify first.
                 }}
                 className="w-full text-left text-xs p-2.5 rounded-lg bg-slate-50 hover:bg-purple-50 hover:text-purple-700 text-slate-600 border border-slate-100 transition-colors truncate"
                 title={t.label}
@@ -135,7 +133,7 @@ const CodeGenerator: React.FC = () => {
         </div>
 
         {/* History Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col h-64 lg:h-auto lg:flex-1 lg:min-h-0 lg:overflow-hidden">
           <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
             <History className="w-4 h-4 text-blue-500" />
             Geçmiş
@@ -170,7 +168,7 @@ const CodeGenerator: React.FC = () => {
       </div>
 
       {/* RIGHT MAIN AREA: Generator */}
-      <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden h-full">
+      <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col lg:overflow-hidden lg:h-full min-h-[600px]">
         
         {/* Editor / Output Area */}
         <div className="flex-1 flex flex-col min-h-0">
