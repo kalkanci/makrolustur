@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
-// Declare process to fix "Cannot find name 'process'" error in client-side build
+// Declare process to satisfy TypeScript, though it's handled by Vite define
 declare const process: {
   env: {
     API_KEY: string;
@@ -8,14 +8,15 @@ declare const process: {
   }
 };
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 /**
  * Generates VBA code based on a user's natural language request.
  * Can optionally take previous code and a refinement instruction to edit existing macros.
  */
 export const generateExcelMacro = async (userPrompt: string, previousCode?: string): Promise<string> => {
   try {
+    // Initialize inside function to prevent crash on app load if key is missing
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
     let systemPrompt = "";
 
     const errorHandlingInstructions = `
@@ -96,6 +97,9 @@ export const generateExcelMacro = async (userPrompt: string, previousCode?: stri
  */
 export const getLiveExchangeRate = async (): Promise<{ rate: string; source: string }> => {
   try {
+    // Initialize inside function
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: "What is the current USD to TRY exchange rate? Return just the numeric value.",
