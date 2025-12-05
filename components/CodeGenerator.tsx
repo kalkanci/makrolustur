@@ -5,7 +5,7 @@ import {
   Table, Sheet, FileJson, Mail, Calculator, 
   PaintBucket, Lock, Unlock, Eraser, FileText, 
   Search, Eye, EyeOff, BarChart, Save, Database,
-  ArrowRight, PlusCircle, Home
+  ArrowRight, PlusCircle, Home, AlertTriangle
 } from 'lucide-react';
 import { generateExcelMacro } from '../services/geminiService';
 
@@ -121,12 +121,55 @@ const highlightKeywords = (text: string, keywords: string[]) => {
   return html;
 };
 
+// VBA Code Validator
+const validateVbaCode = (code: string): string[] => {
+  const issues: string[] = [];
+  const lines = code.split('\n');
+  
+  let openSubs = 0;
+  let openFuncs = 0;
+  let openWiths = 0;
+  let openFors = 0;
+
+  for (let line of lines) {
+    const trimmed = line.trim();
+    const commentIdx = trimmed.indexOf("'");
+    const content = (commentIdx > -1 ? trimmed.substring(0, commentIdx) : trimmed).trim();
+    
+    if (!content) continue;
+
+    // Sub / End Sub
+    if (/^(Private\s+|Public\s+)?Sub\s+/i.test(content) && !/^End\s+Sub/i.test(content) && !/^Exit\s+Sub/i.test(content)) openSubs++;
+    if (/^End\s+Sub$/i.test(content)) openSubs--;
+
+    // Function / End Function
+    if (/^(Private\s+|Public\s+)?Function\s+/i.test(content) && !/^End\s+Function/i.test(content) && !/^Exit\s+Function/i.test(content)) openFuncs++;
+    if (/^End\s+Function$/i.test(content)) openFuncs--;
+
+    // With / End With
+    if (/^With\s+/i.test(content)) openWiths++;
+    if (/^End\s+With$/i.test(content)) openWiths--;
+
+    // For / Next
+    if (/^For\s+/i.test(content)) openFors++;
+    if (/^Next(\s+.*)?$/i.test(content)) openFors--;
+  }
+
+  if (openSubs !== 0) issues.push(openSubs > 0 ? "Eksik 'End Sub' ifadesi var." : "Fazladan 'End Sub' ifadesi var.");
+  if (openFuncs !== 0) issues.push(openFuncs > 0 ? "Eksik 'End Function' ifadesi var." : "Fazladan 'End Function' ifadesi var.");
+  if (openWiths !== 0) issues.push(openWiths > 0 ? "Eksik 'End With' ifadesi var." : "Fazladan 'End With' ifadesi var.");
+  if (openFors !== 0) issues.push(openFors > 0 ? "Eksik 'Next' ifadesi var." : "Fazladan 'Next' ifadesi var.");
+
+  return issues;
+};
+
 const CodeGenerator: React.FC = () => {
   const [prompt, setPrompt] = useState<string>("");
   const [code, setCode] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
   
   const codeSectionRef = useRef<HTMLDivElement>(null);
 
@@ -164,9 +207,14 @@ const CodeGenerator: React.FC = () => {
     const isRefinement = !!code && !templatePrompt; 
     
     setLoading(true);
+    setValidationErrors([]);
     try {
       const result = await generateExcelMacro(promptToUse, isRefinement ? code : undefined);
       setCode(result);
+
+      // Validate Generated Code
+      const errors = validateVbaCode(result);
+      setValidationErrors(errors);
 
       if (!isRefinement) {
         const newItem: HistoryItem = {
@@ -191,6 +239,8 @@ const CodeGenerator: React.FC = () => {
   const loadFromHistory = (item: HistoryItem) => {
     setPrompt(item.prompt);
     setCode(item.code);
+    const errors = validateVbaCode(item.code);
+    setValidationErrors(errors);
   };
 
   const deleteHistoryItem = (e: React.MouseEvent, id: string) => {
@@ -202,6 +252,7 @@ const CodeGenerator: React.FC = () => {
     setCode("");
     setPrompt("");
     setCopied(false);
+    setValidationErrors([]);
   };
 
   const copyToClipboard = () => {
@@ -399,6 +450,21 @@ const CodeGenerator: React.FC = () => {
                     </button>
                     </div>
                 </div>
+
+                {/* Validation Warnings */}
+                {validationErrors.length > 0 && (
+                  <div className="bg-amber-50 border-b border-amber-200 p-4 animate-in slide-in-from-top-2">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="text-sm font-bold text-amber-800 mb-1">Kod Kontrolü Uyarıları</h4>
+                        <ul className="list-disc list-inside text-sm text-amber-700 space-y-1">
+                          {validationErrors.map((err, i) => <li key={i}>{err}</li>)}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Code Viewer Display */}
                 <div className="relative bg-white min-h-[300px] max-h-[800px] overflow-auto custom-scrollbar group">
