@@ -20,6 +20,13 @@ export const generateExcelMacro = async (userPrompt: string, previousCode?: stri
       3. Kodun sonunda (Exit Sub öncesi) bu ayarlar mutlaka eski haline döndürülmelidir (True/Automatic).
       4. "ErrorHandler:" etiketi prosedürün en sonunda yer almalı ve kullanıcıya "MsgBox" ile anlaşılır, Türkçe bir hata mesajı göstermelidir.
       5. Hata mesajı formatı: MsgBox "Bir hata oluştu: " & Err.Description, vbCritical, "Hata"
+      6. OKUNABİLİRLİK: Her Döngü (For, Do, While) ve Koşul (If, Select Case) bloğunun başlangıcına ve bitişine ne yaptığını anlatan yorum satırları ekle.
+         Örnek:
+         ' --- Döngü Başlangıcı: Satırları Tara ---
+         For i = 1 To lastRow
+            ' ... kodlar ...
+         Next i
+         ' --- Döngü Sonu ---
     `;
 
     if (previousCode) {
