@@ -48,6 +48,7 @@ const CodeGenerator: React.FC = () => {
   // Scroll to code section when it appears
   useEffect(() => {
     if ((code || loading) && codeSectionRef.current) {
+        // Small delay to ensure DOM is rendered before scrolling
         setTimeout(() => {
             codeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 100);
@@ -75,7 +76,7 @@ const CodeGenerator: React.FC = () => {
         setHistory(prev => [newItem, ...prev].slice(0, 20));
       }
       
-      // Clear prompt only if it was a refinement, so user sees what they asked for initially
+      // Clear prompt only if it was a refinement
       if(isRefinement) setPrompt("");
 
     } catch (error) {
@@ -228,11 +229,15 @@ const CodeGenerator: React.FC = () => {
         </div>
 
         {/* 2. OUTPUT AREA (Animated Reveal) */}
-        {(code || loading) && (
-            <div 
-              ref={codeSectionRef}
-              className="flex-1 bg-white rounded-xl shadow-lg border border-slate-200 flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-8 duration-500 min-h-[500px]"
-            >
+        {/* We use standard Tailwind transition opacity/transform logic instead of non-standard 'animate-in' classes */}
+        <div 
+            ref={codeSectionRef}
+            className={`flex-1 bg-white rounded-xl shadow-lg border border-slate-200 flex flex-col overflow-hidden transition-all duration-700 ease-out origin-top min-h-[500px] ${
+                (code || loading) 
+                ? 'opacity-100 translate-y-0 max-h-[2000px]' 
+                : 'opacity-0 -translate-y-4 max-h-0 overflow-hidden hidden'
+            }`}
+        >
               {/* Toolbar */}
               <div className="flex justify-between items-center px-4 py-3 bg-slate-50 border-b border-slate-200">
                 <div className="flex items-center gap-2">
@@ -282,8 +287,7 @@ const CodeGenerator: React.FC = () => {
                   </>
                 )}
               </div>
-            </div>
-        )}
+        </div>
 
       </div>
     </div>
