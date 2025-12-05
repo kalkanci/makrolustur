@@ -1,6 +1,6 @@
 import React from 'react';
 import CodeGenerator from './components/CodeGenerator';
-import { FileSpreadsheet } from 'lucide-react';
+import { FileSpreadsheet, Key } from 'lucide-react';
 
 const App: React.FC = () => {
   return (
@@ -17,7 +17,16 @@ const App: React.FC = () => {
             </h1>
           </div>
           <div className="flex items-center gap-4">
-             <span className="text-xs font-medium px-2 py-1 bg-slate-700 text-slate-200 rounded-full hidden sm:inline-block border border-slate-600">
+            <a 
+              href="https://aistudio.google.com/app/apikey" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="hidden sm:flex items-center gap-1.5 text-xs font-medium bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-full transition-colors"
+            >
+              <Key className="w-3 h-3" />
+              API Anahtarı Al (Ücretsiz)
+            </a>
+            <span className="text-xs font-medium px-2 py-1 bg-slate-700 text-slate-200 rounded-full hidden sm:inline-block border border-slate-600">
                 Pro v2.1
             </span>
             <a 
