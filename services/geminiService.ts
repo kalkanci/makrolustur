@@ -1,0 +1,75 @@
+import { GoogleGenAI } from "@google/genai";
+
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+/**
+ * Generates VBA code based on a user's natural language request.
+ */
+export const generateExcelMacro = async (userPrompt: string): Promise<string> => {
+  try {
+    const systemPrompt = `
+      Sen dünyanın en iyi Excel VBA (Macro) geliştiricisisin.
+      Kullanıcı sana Excel'de ne yapmak istediğini söyleyecek.
+      Senin görevin bu işi yapan kusursuz, hatasız ve iyi yorumlanmış bir VBA kodu yazmaktır.
+
+      Kurallar:
+      1. SADECE VBA kodunu döndür. Başka bir açıklama, sohbet veya markdown ('''vba) ekleme.
+      2. Kodun başına ne işe yaradığını anlatan yorum satırları ekle (Türkçe).
+      3. "Hata Ayıklama" (Error Handling) mekanizması ekle (On Error GoTo...).
+      4. Kodun modüler ve temiz olsun.
+      5. Eğer kullanıcı tehlikeli bir şey isterse (dosya silme vb.) reddet ve yorum satırı olarak uyarı yaz.
+      
+      Kullanıcı İsteği: "${userPrompt}"
+    `;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: systemPrompt,
+    });
+
+    let code = response.text || "";
+    // Clean up markdown code blocks if the model adds them despite instructions
+    code = code.replace(/```vba/g, '').replace(/```/g, '').trim();
+    
+    return code;
+  } catch (error) {
+    console.error("VBA oluşturulamadı:", error);
+    throw new Error("VBA kodu oluşturulamadı. Lütfen tekrar deneyin.");
+  }
+};
+
+/**
+ * Fetches the live USD/TRY exchange rate using Google Search grounding.
+ */
+export const getLiveExchangeRate = async (): Promise<{ rate: string; source: string }> => {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: "What is the current USD to TRY exchange rate? Return just the numeric value.",
+      config: {
+        tools: [{ googleSearch: {} }],
+      },
+    });
+
+    const text = response.text || "";
+    // Extract the rate, assuming format like 30.12 or 30,12
+    const match = text.match(/(\d+[.,]\d+)/);
+    const rate = match ? match[0] : text.substring(0, 10); // fallback
+
+    let source = "Google Search";
+    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    
+    if (chunks && chunks.length > 0) {
+      // Find the first chunk with web data
+      const webChunk = chunks.find((c: any) => c.web);
+      if (webChunk?.web) {
+        source = webChunk.web.title || new URL(webChunk.web.uri).hostname;
+      }
+    }
+
+    return { rate, source };
+  } catch (error) {
+    console.error("Kur bilgisi alınamadı:", error);
+    throw error;
+  }
+};
