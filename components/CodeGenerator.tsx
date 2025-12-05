@@ -5,7 +5,7 @@ import {
   Table, Sheet, FileJson, Mail, Calculator, 
   PaintBucket, Lock, Unlock, Eraser, FileText, 
   Search, Eye, EyeOff, BarChart, Save, Database,
-  ArrowRight
+  ArrowRight, PlusCircle, Home
 } from 'lucide-react';
 import { generateExcelMacro } from '../services/geminiService';
 
@@ -75,6 +75,52 @@ const TEMPLATE_CATEGORIES = [
   }
 ];
 
+// Simple VBA Syntax Highlighter Component
+const VbaCodeViewer: React.FC<{ code: string }> = ({ code }) => {
+  const lines = code.split('\n');
+  const keywords = ["Sub", "End Sub", "Dim", "As", "Set", "If", "Then", "Else", "End If", "For", "Next", "To", "MsgBox", "Call", "Function", "End Function", "On Error", "GoTo", "Resume", "True", "False", "Nothing", "With", "End With", "ActiveSheet", "Range", "Cells", "Application", "Worksheets", "Workbook", "Option Explicit"];
+  
+  return (
+    <pre className="font-mono text-sm leading-6 whitespace-pre-wrap break-words text-slate-800">
+      {lines.map((line, idx) => {
+        // Handle Comments (Green)
+        const commentIndex = line.indexOf("'");
+        if (commentIndex !== -1) {
+          const codePart = line.substring(0, commentIndex);
+          const commentPart = line.substring(commentIndex);
+          return (
+            <div key={idx}>
+              <span dangerouslySetInnerHTML={{ __html: highlightKeywords(codePart, keywords) }} />
+              <span className="text-green-600 italic">{commentPart}</span>
+            </div>
+          );
+        }
+        return (
+          <div key={idx} dangerouslySetInnerHTML={{ __html: highlightKeywords(line, keywords) }} />
+        );
+      })}
+    </pre>
+  );
+};
+
+// Helper to highlight keywords in a string (returns HTML string)
+const highlightKeywords = (text: string, keywords: string[]) => {
+  if(!text) return "";
+  let html = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"([^"]*)"/g, '<span class="text-orange-600">"$1"</span>'); // Strings in Orange
+
+  keywords.forEach(kw => {
+     // Case insensitive whole word match
+     const regex = new RegExp(`\\b${kw}\\b`, 'gi');
+     // Replace with same case but wrapped
+     html = html.replace(regex, (match) => `<span class="text-blue-700 font-bold">${match}</span>`);
+  });
+  return html;
+};
+
 const CodeGenerator: React.FC = () => {
   const [prompt, setPrompt] = useState<string>("");
   const [code, setCode] = useState<string>("");
@@ -113,7 +159,6 @@ const CodeGenerator: React.FC = () => {
     const promptToUse = templatePrompt || prompt;
     if (!promptToUse.trim()) return;
     
-    // If template was clicked, update the input box visually
     if(templatePrompt) setPrompt(templatePrompt);
 
     const isRefinement = !!code && !templatePrompt; 
@@ -153,6 +198,12 @@ const CodeGenerator: React.FC = () => {
     setHistory(prev => prev.filter(i => i.id !== id));
   };
 
+  const handleReset = () => {
+    setCode("");
+    setPrompt("");
+    setCopied(false);
+  };
+
   const copyToClipboard = () => {
     navigator.clipboard.writeText(code);
     setCopied(true);
@@ -175,14 +226,14 @@ const CodeGenerator: React.FC = () => {
   return (
     <div className="flex flex-col lg:flex-row gap-6 min-h-[calc(100vh-100px)]">
       
-      {/* LEFT SIDEBAR: History Only (Simplified) */}
+      {/* LEFT SIDEBAR: History */}
       <div className="lg:w-72 w-full flex flex-col gap-6 shrink-0 order-2 lg:order-1">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-col h-[600px] lg:h-auto lg:sticky lg:top-24">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-col max-h-[600px] lg:sticky lg:top-24">
           <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
             <History className="w-4 h-4 text-blue-500" />
             Geçmiş İşlemler
           </h3>
-          <div className="overflow-y-auto flex-1 pr-1 custom-scrollbar space-y-2 max-h-[calc(100vh-200px)]">
+          <div className="overflow-y-auto flex-1 pr-1 custom-scrollbar space-y-2 max-h-[500px]">
             {history.length === 0 ? (
               <div className="text-center text-xs text-slate-400 py-4 italic">Henüz geçmiş yok.</div>
             ) : (
@@ -216,10 +267,21 @@ const CodeGenerator: React.FC = () => {
         
         {/* 1. INPUT AREA */}
         <div className="bg-white rounded-xl shadow-md border border-slate-200 p-6 transition-all duration-300">
-           <label className="block text-lg font-semibold text-slate-800 mb-3 flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-purple-600" />
-              {code ? "Kodu Revize Et / Değiştir" : "Excel'de ne yapmak istiyorsunuz?"}
-           </label>
+           <div className="flex items-center justify-between mb-3">
+             <label className="block text-lg font-semibold text-slate-800 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-purple-600" />
+                {code ? "Kodu Revize Et / Değiştir" : "Excel'de ne yapmak istiyorsunuz?"}
+             </label>
+             {code && (
+                <button 
+                  onClick={handleReset}
+                  className="flex items-center gap-2 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg transition-colors font-medium"
+                >
+                  <Home className="w-4 h-4" />
+                  Yeni İşlem
+                </button>
+             )}
+           </div>
            
            <div className="relative">
               <textarea 
@@ -262,7 +324,7 @@ const CodeGenerator: React.FC = () => {
            </div>
         </div>
 
-        {/* 2. TEMPLATES GRID (Only visible if no code is generated yet, or user clears code) */}
+        {/* 2. TEMPLATES GRID */}
         {!code && !loading && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex items-center gap-2 mb-2">
@@ -306,64 +368,61 @@ const CodeGenerator: React.FC = () => {
         )}
 
         {/* 3. OUTPUT AREA */}
-        <div 
-            ref={codeSectionRef}
-            className={`flex-1 bg-white rounded-xl shadow-lg border border-slate-200 flex flex-col overflow-hidden transition-all duration-700 ease-out origin-top min-h-[600px] ${
-                (code || loading) 
-                ? 'opacity-100 translate-y-0 max-h-[2000px]' 
-                : 'opacity-0 -translate-y-4 max-h-0 overflow-hidden hidden'
-            }`}
-        >
-              {/* Toolbar */}
-              <div className="flex justify-between items-center px-4 py-3 bg-slate-50 border-b border-slate-200">
-                <div className="flex items-center gap-2">
-                  <FileCode className="w-5 h-5 text-slate-600" />
-                  <span className="font-semibold text-slate-700">VBA Kod Sonucu</span>
-                  {!loading && <span className="text-[10px] uppercase font-bold px-2 py-0.5 bg-green-100 text-green-700 rounded-full tracking-wide">Hazır</span>}
-                </div>
-                <div className="flex gap-2">
-                  <button 
-                      onClick={copyToClipboard}
-                      disabled={loading}
-                      className="text-xs bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors font-medium shadow-sm"
-                  >
-                      {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
-                      {copied ? 'Kopyalandı' : 'Kopyala'}
-                  </button>
-                  <button 
-                      onClick={downloadBasFile}
-                      disabled={loading}
-                      className="text-xs bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors shadow-sm"
-                  >
-                      <Download className="w-3.5 h-3.5" />
-                      .bas İndir
-                  </button>
-                </div>
-              </div>
-
-              {/* Code Editor Display */}
-              <div className="relative flex-1 bg-[#1e1e1e] overflow-hidden group">
-                {loading ? (
-                   <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4">
-                      <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
-                      <p className="text-blue-300 font-mono text-sm animate-pulse">Kodunuz hazırlanıyor...</p>
-                   </div>
-                ) : (
-                  <>
-                    <textarea 
-                      value={code}
-                      readOnly
-                      className="w-full h-full p-6 bg-transparent text-blue-300 font-mono text-sm resize-none focus:outline-none custom-scrollbar leading-relaxed"
-                      spellCheck={false}
-                    />
-                    {/* Floating Instruction */}
-                    <div className="absolute bottom-4 right-4 bg-blue-900/80 backdrop-blur text-blue-100 text-xs px-3 py-2 rounded-lg border border-blue-700/50 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                       Excel'de: Alt + F11 &gt; Insert Module &gt; Yapıştır
+        {(code || loading) && (
+            <div 
+                ref={codeSectionRef}
+                className="bg-white rounded-xl shadow-lg border border-slate-200 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500"
+            >
+                {/* Toolbar */}
+                <div className="flex justify-between items-center px-4 py-3 bg-slate-50 border-b border-slate-200">
+                    <div className="flex items-center gap-2">
+                    <FileCode className="w-5 h-5 text-slate-600" />
+                    <span className="font-semibold text-slate-700">VBA Kod Sonucu</span>
+                    {!loading && <span className="text-[10px] uppercase font-bold px-2 py-0.5 bg-green-100 text-green-700 rounded-full tracking-wide">Hazır</span>}
                     </div>
-                  </>
-                )}
-              </div>
-        </div>
+                    <div className="flex gap-2">
+                    <button 
+                        onClick={copyToClipboard}
+                        disabled={loading}
+                        className="text-xs bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors font-medium shadow-sm"
+                    >
+                        {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copied ? 'Kopyalandı' : 'Kopyala'}
+                    </button>
+                    <button 
+                        onClick={downloadBasFile}
+                        disabled={loading}
+                        className="text-xs bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors shadow-sm"
+                    >
+                        <Download className="w-3.5 h-3.5" />
+                        .bas İndir
+                    </button>
+                    </div>
+                </div>
+
+                {/* Code Viewer Display */}
+                <div className="relative bg-white min-h-[300px] max-h-[800px] overflow-auto custom-scrollbar group">
+                    {loading ? (
+                    <div className="flex flex-col items-center justify-center h-[300px] space-y-4">
+                        <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
+                        <p className="text-blue-500 font-mono text-sm animate-pulse">Kodunuz hazırlanıyor...</p>
+                    </div>
+                    ) : (
+                    <>
+                        <div className="p-6">
+                            <VbaCodeViewer code={code} />
+                        </div>
+                        {/* Floating Instruction */}
+                        <div className="sticky bottom-4 left-0 w-full flex justify-end px-4 pointer-events-none">
+                            <div className="bg-blue-600/90 backdrop-blur text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                                Excel'de: Alt + F11 &gt; Insert Module &gt; Yapıştır
+                            </div>
+                        </div>
+                    </>
+                    )}
+                </div>
+            </div>
+        )}
 
       </div>
     </div>
