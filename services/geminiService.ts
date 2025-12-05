@@ -93,6 +93,38 @@ export const generateExcelMacro = async (userPrompt: string, previousCode?: stri
 };
 
 /**
+ * Analyzes the generated VBA code and provides suggestions.
+ */
+export const getCodeSuggestions = async (code: string): Promise<string> => {
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    const prompt = `
+      Sen uzman bir Code Reviewer (Kod İnceleyici) ve Eğitmensin.
+      
+      Aşağıdaki Excel VBA kodunu analiz et ve TÜRKÇE olarak şu formatta kısa bir rapor sun:
+      
+      1. **Kod Özeti**: Kodun ne yaptığını 1 cümle ile açıkla.
+      2. **Geliştirme Önerileri**: Varsa performans veya mantık açısından 2-3 kısa öneri (Madde işareti ile). Yoksa "Kod gayet optimize görünüyor" yaz.
+      3. **Dikkat**: Eğer potansiyel bir risk (sonsuz döngü, dosya silme vs.) varsa belirt.
+      
+      KOD:
+      ${code}
+    `;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+    });
+
+    return response.text || "Analiz yapılamadı.";
+  } catch (error) {
+    console.error("Analiz hatası:", error);
+    return "Şu anda kod analizi yapılamıyor.";
+  }
+};
+
+/**
  * Fetches the live USD/TRY exchange rate using Google Search grounding.
  */
 export const getLiveExchangeRate = async (): Promise<{ rate: string; source: string }> => {

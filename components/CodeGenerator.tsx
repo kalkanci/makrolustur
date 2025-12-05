@@ -5,9 +5,9 @@ import {
   Table, Sheet, FileJson, Mail, Calculator, 
   PaintBucket, Lock, Unlock, Eraser, FileText, 
   Search, Eye, EyeOff, BarChart, Save, Database,
-  ArrowRight, Home, AlertTriangle
+  ArrowRight, Home, AlertTriangle, Lightbulb
 } from 'lucide-react';
-import { generateExcelMacro } from '../services/geminiService';
+import { generateExcelMacro, getCodeSuggestions } from '../services/geminiService';
 
 interface HistoryItem {
   id: string;
@@ -171,6 +171,11 @@ const CodeGenerator: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   
+  // Suggestion States
+  const [suggestions, setSuggestions] = useState<string>("");
+  const [loadingSuggestions, setLoadingSuggestions] = useState<boolean>(false);
+  const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
+  
   const codeSectionRef = useRef<HTMLDivElement>(null);
 
   // Load history
@@ -208,6 +213,9 @@ const CodeGenerator: React.FC = () => {
     
     setLoading(true);
     setValidationErrors([]);
+    setSuggestions("");
+    setShowSuggestions(false);
+
     try {
       const result = await generateExcelMacro(promptToUse, isRefinement ? code : undefined);
       setCode(result);
@@ -236,11 +244,27 @@ const CodeGenerator: React.FC = () => {
     }
   };
 
+  const handleGetSuggestions = async () => {
+    if (!code) return;
+    setLoadingSuggestions(true);
+    setShowSuggestions(true);
+    try {
+        const result = await getCodeSuggestions(code);
+        setSuggestions(result);
+    } catch (e) {
+        setSuggestions("Öneriler alınamadı.");
+    } finally {
+        setLoadingSuggestions(false);
+    }
+  };
+
   const loadFromHistory = (item: HistoryItem) => {
     setPrompt(item.prompt);
     setCode(item.code);
     const errors = validateVbaCode(item.code);
     setValidationErrors(errors);
+    setSuggestions("");
+    setShowSuggestions(false);
   };
 
   const deleteHistoryItem = (e: React.MouseEvent, id: string) => {
@@ -253,6 +277,8 @@ const CodeGenerator: React.FC = () => {
     setPrompt("");
     setCopied(false);
     setValidationErrors([]);
+    setSuggestions("");
+    setShowSuggestions(false);
   };
 
   const copyToClipboard = () => {
@@ -425,29 +451,37 @@ const CodeGenerator: React.FC = () => {
                 className="bg-white rounded-xl shadow-lg border border-slate-200 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500"
             >
                 {/* Toolbar */}
-                <div className="flex justify-between items-center px-4 py-3 bg-slate-50 border-b border-slate-200">
+                <div className="flex flex-wrap justify-between items-center px-4 py-3 bg-slate-50 border-b border-slate-200 gap-2">
                     <div className="flex items-center gap-2">
-                    <FileCode className="w-5 h-5 text-slate-600" />
-                    <span className="font-semibold text-slate-700">VBA Kod Sonucu</span>
-                    {!loading && <span className="text-[10px] uppercase font-bold px-2 py-0.5 bg-green-100 text-green-700 rounded-full tracking-wide">Hazır</span>}
+                      <FileCode className="w-5 h-5 text-slate-600" />
+                      <span className="font-semibold text-slate-700">VBA Kod Sonucu</span>
+                      {!loading && <span className="text-[10px] uppercase font-bold px-2 py-0.5 bg-green-100 text-green-700 rounded-full tracking-wide">Hazır</span>}
                     </div>
                     <div className="flex gap-2">
-                    <button 
-                        onClick={copyToClipboard}
-                        disabled={loading}
-                        className="text-xs bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors font-medium shadow-sm"
-                    >
-                        {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
-                        {copied ? 'Kopyalandı' : 'Kopyala'}
-                    </button>
-                    <button 
-                        onClick={downloadBasFile}
-                        disabled={loading}
-                        className="text-xs bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors shadow-sm"
-                    >
-                        <Download className="w-3.5 h-3.5" />
-                        .bas İndir
-                    </button>
+                      <button 
+                          onClick={handleGetSuggestions}
+                          disabled={loading || loadingSuggestions}
+                          className="text-xs bg-amber-100 hover:bg-amber-200 border border-amber-200 text-amber-800 px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors font-medium shadow-sm"
+                      >
+                          {loadingSuggestions ? <div className="animate-spin w-3 h-3 border-2 border-amber-800/30 border-t-amber-800 rounded-full"></div> : <Lightbulb className="w-3.5 h-3.5" />}
+                          Analiz Et & Öneriler
+                      </button>
+                      <button 
+                          onClick={copyToClipboard}
+                          disabled={loading}
+                          className="text-xs bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors font-medium shadow-sm"
+                      >
+                          {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+                          {copied ? 'Kopyalandı' : 'Kopyala'}
+                      </button>
+                      <button 
+                          onClick={downloadBasFile}
+                          disabled={loading}
+                          className="text-xs bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors shadow-sm"
+                      >
+                          <Download className="w-3.5 h-3.5" />
+                          .bas İndir
+                      </button>
                     </div>
                 </div>
 
@@ -463,6 +497,35 @@ const CodeGenerator: React.FC = () => {
                         </ul>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* Suggestions Panel */}
+                {showSuggestions && (
+                  <div className="bg-indigo-50 border-b border-indigo-100 p-5 animate-in slide-in-from-top-2">
+                     <div className="flex items-start gap-3">
+                       <div className="bg-indigo-100 p-2 rounded-lg shrink-0">
+                         <Lightbulb className="w-5 h-5 text-indigo-600" />
+                       </div>
+                       <div className="flex-1">
+                         <h4 className="text-sm font-bold text-indigo-900 mb-2">Yapay Zeka Kod Analizi & Öneriler</h4>
+                         {loadingSuggestions ? (
+                           <div className="space-y-2 animate-pulse">
+                             <div className="h-3 bg-indigo-200 rounded w-3/4"></div>
+                             <div className="h-3 bg-indigo-200 rounded w-1/2"></div>
+                             <div className="h-3 bg-indigo-200 rounded w-5/6"></div>
+                           </div>
+                         ) : (
+                           <div className="text-sm text-indigo-800 whitespace-pre-wrap leading-relaxed">
+                             {suggestions}
+                           </div>
+                         )}
+                       </div>
+                       <button onClick={() => setShowSuggestions(false)} className="text-indigo-400 hover:text-indigo-600">
+                         <span className="sr-only">Kapat</span>
+                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                       </button>
+                     </div>
                   </div>
                 )}
 
