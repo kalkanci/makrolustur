@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   FileCode, Copy, Check, Download, Sparkles, 
-  History, Zap, Trash2, ChevronRight, RefreshCw, Wand2
+  History, Zap, Trash2, RefreshCw, Wand2,
+  Table, Sheet, FileJson, Mail, Calculator, 
+  PaintBucket, Lock, Unlock, Eraser, FileText, 
+  Search, Eye, EyeOff, BarChart, Save, Database,
+  ArrowRight
 } from 'lucide-react';
 import { generateExcelMacro } from '../services/geminiService';
 
@@ -12,12 +16,63 @@ interface HistoryItem {
   date: Date;
 }
 
-const TEMPLATES = [
-  { label: "Döviz Kuru Çekici", prompt: "Bir butona basınca güncel USD ve EUR kurlarını çekip A1 ve A2 hücrelerine yazan ve tarih ekleyen bir makro yaz." },
-  { label: "Boş Satırları Temizle", prompt: "Aktif sayfadaki A sütununda boş olan tüm satırları tespit edip komple silen bir makro yaz." },
-  { label: "PDF Olarak Kaydet", prompt: "Aktif sayfayı masaüstüne o günün tarihiyle isimlendirilmiş bir PDF dosyası olarak kaydeden makro yaz." },
-  { label: "Tüm Sayfaları Listele", prompt: "Yeni bir 'İndeks' sayfası oluştur ve bu kitaptaki tüm diğer sayfaların isimlerini linkli (hyperlink) şekilde listele." },
-  { label: "Mükerrer Kayıtları Boya", prompt: "A sütunundaki tekrar eden verileri bul ve arka plan rengini kırmızı, yazı rengini beyaz yap." }
+// Helper component for Icon not in lucide defaults used above
+const TypeCaseIcon = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 7V5h18v2"/><path d="M9 7v12"/><path d="M15 7v12"/></svg>
+);
+
+// 30+ Templates categorized for better UI
+const TEMPLATE_CATEGORIES = [
+  {
+    title: "Veri Temizleme & Düzenleme",
+    items: [
+      { icon: <Eraser className="w-4 h-4 text-rose-500" />, label: "Boş Satırları Sil", prompt: "Aktif sayfadaki A sütunu boş olan tüm satırları bul ve tamamen sil." },
+      { icon: <Search className="w-4 h-4 text-rose-500" />, label: "Mükerrerleri Kaldır", prompt: "A sütunundaki tekrar eden verileri bul ve satırları tamamen kaldır, sadece benzersizler kalsın." },
+      { icon: <FileText className="w-4 h-4 text-rose-500" />, label: "Boşlukları Kırp (Trim)", prompt: "Seçili alandaki tüm hücrelerin başında ve sonundaki gereksiz boşlukları temizle." },
+      { icon: <TypeCaseIcon className="w-4 h-4 text-rose-500" />, label: "Büyük Harfe Çevir", prompt: "Seçili alandaki tüm metinleri BÜYÜK HARFE çevir." },
+      { icon: <TypeCaseIcon className="w-4 h-4 text-rose-500" />, label: "Yazım Düzeni (Proper)", prompt: "Seçili alandaki metinlerin İlk Harflerini Büyük yap." },
+      { icon: <Eraser className="w-4 h-4 text-rose-500" />, label: "Birleştirilmişleri Çöz", prompt: "Sayfadaki tüm birleştirilmiş (merged) hücreleri çöz ve değerleri doldur." },
+    ]
+  },
+  {
+    title: "Dosya & Sayfa İşlemleri",
+    items: [
+      { icon: <FileJson className="w-4 h-4 text-blue-500" />, label: "PDF Olarak Kaydet", prompt: "Aktif sayfayı masaüstüne bugünün tarihiyle isimlendirilmiş bir PDF dosyası olarak kaydet." },
+      { icon: <Sheet className="w-4 h-4 text-blue-500" />, label: "Sayfaları Listele (Index)", prompt: "Yeni bir 'Index' sayfası oluştur ve kitaptaki tüm sayfaların isimlerini linkli (hyperlink) olarak listele." },
+      { icon: <Save className="w-4 h-4 text-blue-500" />, label: "Sayfaları Ayrı Kaydet", prompt: "Bu kitaptaki her bir çalışma sayfasını, kendi isminde ayrı birer Excel dosyası (.xlsx) olarak masaüstüne kaydet." },
+      { icon: <Lock className="w-4 h-4 text-blue-500" />, label: "Tüm Sayfaları Koru", prompt: "Kitaptaki tüm sayfaları '1234' şifresi ile korumaya al (Protect)." },
+      { icon: <Unlock className="w-4 h-4 text-blue-500" />, label: "Korumayı Kaldır", prompt: "Kitaptaki tüm sayfaların korumasını '1234' şifresini kullanarak kaldır." },
+      { icon: <Eye className="w-4 h-4 text-blue-500" />, label: "Gizli Sayfaları Göster", prompt: "Kitaptaki gizlenmiş olan tüm sayfaları görünür hale getir." },
+    ]
+  },
+  {
+    title: "Görsel & Biçimlendirme",
+    items: [
+      { icon: <PaintBucket className="w-4 h-4 text-amber-500" />, label: "Zebra Satır Boyama", prompt: "Tablodaki satırları okunabilirliği artırmak için birer atlayarak açık gri renge boya." },
+      { icon: <Table className="w-4 h-4 text-amber-500" />, label: "Tüm Kenarlıkları Ekle", prompt: "Dolu olan veri aralığının tamamına ince siyah kenarlıklar ekle." },
+      { icon: <Calculator className="w-4 h-4 text-amber-500" />, label: "Sütunları Otomatik Sığdır", prompt: "Tüm sayfadaki sütun genişliklerini içeriklerine göre otomatik ayarla (AutoFit)." },
+      { icon: <PaintBucket className="w-4 h-4 text-amber-500" />, label: "Hataları Kırmızı Yap", prompt: "Sayfada hata değeri içeren (#N/A, #VALUE! vb.) hücrelerin arka planını kırmızı yap." },
+      { icon: <PaintBucket className="w-4 h-4 text-amber-500" />, label: "Negatifleri Kırmızı Yap", prompt: "Seçili alandaki 0'dan küçük sayıların yazı rengini kırmızı ve kalın yap." },
+      { icon: <Table className="w-4 h-4 text-amber-500" />, label: "Başlıkları Dondur", prompt: "İlk satırı dondur (Freeze Panes) ve arka planını koyu mavi, yazı rengini beyaz yap." },
+    ]
+  },
+  {
+    title: "İleri Düzey & Entegrasyon",
+    items: [
+      { icon: <RefreshCw className="w-4 h-4 text-purple-500" />, label: "Döviz Kuru Çek (Web)", prompt: "Google Finance veya bir XML kaynağından güncel USD/TL kurunu çekip A1 hücresine yazan makro." },
+      { icon: <Mail className="w-4 h-4 text-purple-500" />, label: "Seçimi Mail At", prompt: "Seçili alanı HTML formatında gövdeye ekleyerek Outlook üzerinden yeni bir e-posta oluştur." },
+      { icon: <Database className="w-4 h-4 text-purple-500" />, label: "Formülleri Değere Çevir", prompt: "Tüm sayfadaki formülleri kaldır ve sadece hesaplanmış değerlerini (Values) bırak." },
+      { icon: <BarChart className="w-4 h-4 text-purple-500" />, label: "Pivot Tablo Oluştur", prompt: "A1'den başlayan verileri kullanarak yeni bir sayfada özet bir Pivot Tablo oluştur." },
+      { icon: <FileJson className="w-4 h-4 text-purple-500" />, label: "CSV Olarak Dışa Aktar", prompt: "Aktif sayfayı, noktalı virgül ile ayrılmış bir CSV dosyası olarak belgelerime kaydet." },
+      { icon: <Save className="w-4 h-4 text-purple-500" />, label: "Yedek Al (Backup)", prompt: "Dosyanın bir kopyasını 'Yedek_Tarih_Saat.xlsm' adıyla aynı klasöre kaydet." },
+      { icon: <Calculator className="w-4 h-4 text-purple-500" />, label: "Rastgele Sayı Üret", prompt: "A1:A100 arasına 1 ile 1000 arasında rastgele tamsayılar üret ve yaz." },
+      { icon: <Table className="w-4 h-4 text-purple-500" />, label: "HTML Tablo Kodu Üret", prompt: "Seçili alanı bir HTML <table> kodu haline getirip panoya (clipboard) kopyala." },
+      { icon: <Search className="w-4 h-4 text-purple-500" />, label: "Gelişmiş Filtreleme", prompt: "A sütununda 'Tamamlandı' yazan satırları filtrele ve sonuçları yeni bir sayfaya kopyala." },
+      { icon: <EyeOff className="w-4 h-4 text-purple-500" />, label: "Boş Sütunları Gizle", prompt: "Başlık satırına (1. satır) bak, eğer başlık boşsa o sütunu tamamen gizle." },
+      { icon: <Database className="w-4 h-4 text-purple-500" />, label: "Klasördeki Dosyaları Listele", prompt: "Kullanıcıdan bir klasör seçmesini iste ve o klasördeki tüm dosya isimlerini A sütununa listele." },
+      { icon: <Calculator className="w-4 h-4 text-purple-500" />, label: "Seçili Sayıları Topla", prompt: "Seçili alandaki sayısal değerleri topla ve kullanıcıya bir Mesaj Kutusu ile göster." },
+    ]
+  }
 ];
 
 const CodeGenerator: React.FC = () => {
@@ -48,35 +103,36 @@ const CodeGenerator: React.FC = () => {
   // Scroll to code section when it appears
   useEffect(() => {
     if ((code || loading) && codeSectionRef.current) {
-        // Small delay to ensure DOM is rendered before scrolling
         setTimeout(() => {
             codeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 100);
     }
   }, [code, loading]);
 
-  const handleGenerate = async () => {
-    if (!prompt.trim()) return;
+  const handleGenerate = async (templatePrompt?: string) => {
+    const promptToUse = templatePrompt || prompt;
+    if (!promptToUse.trim()) return;
     
-    // Determine if this is a refinement (updating existing code) or new generation
-    const isRefinement = !!code; 
+    // If template was clicked, update the input box visually
+    if(templatePrompt) setPrompt(templatePrompt);
+
+    const isRefinement = !!code && !templatePrompt; 
     
     setLoading(true);
     try {
-      const result = await generateExcelMacro(prompt, isRefinement ? code : undefined);
+      const result = await generateExcelMacro(promptToUse, isRefinement ? code : undefined);
       setCode(result);
 
       if (!isRefinement) {
         const newItem: HistoryItem = {
           id: Date.now().toString(),
-          prompt: prompt,
+          prompt: promptToUse,
           code: result,
           date: new Date()
         };
         setHistory(prev => [newItem, ...prev].slice(0, 20));
       }
       
-      // Clear prompt only if it was a refinement
       if(isRefinement) setPrompt("");
 
     } catch (error) {
@@ -119,36 +175,14 @@ const CodeGenerator: React.FC = () => {
   return (
     <div className="flex flex-col lg:flex-row gap-6 min-h-[calc(100vh-100px)]">
       
-      {/* LEFT SIDEBAR: History & Templates */}
-      <div className="lg:w-80 w-full flex flex-col gap-6 shrink-0 order-2 lg:order-1">
-        
-        {/* Templates Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-          <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
-            <Zap className="w-4 h-4 text-amber-500" />
-            Hazır Fikirler
-          </h3>
-          <div className="space-y-2">
-            {TEMPLATES.map((t, idx) => (
-              <button
-                key={idx}
-                onClick={() => setPrompt(t.prompt)}
-                className="w-full text-left text-xs p-3 rounded-lg bg-slate-50 hover:bg-purple-50 hover:text-purple-700 text-slate-600 border border-slate-100 transition-all hover:shadow-sm"
-              >
-                <div className="font-semibold mb-0.5">{t.label}</div>
-                <div className="text-[10px] text-slate-400 opacity-70 truncate">{t.prompt}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* History Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-col max-h-[500px]">
+      {/* LEFT SIDEBAR: History Only (Simplified) */}
+      <div className="lg:w-72 w-full flex flex-col gap-6 shrink-0 order-2 lg:order-1">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-col h-[600px] lg:h-auto lg:sticky lg:top-24">
           <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
             <History className="w-4 h-4 text-blue-500" />
             Geçmiş İşlemler
           </h3>
-          <div className="overflow-y-auto flex-1 pr-1 custom-scrollbar space-y-2">
+          <div className="overflow-y-auto flex-1 pr-1 custom-scrollbar space-y-2 max-h-[calc(100vh-200px)]">
             {history.length === 0 ? (
               <div className="text-center text-xs text-slate-400 py-4 italic">Henüz geçmiş yok.</div>
             ) : (
@@ -178,9 +212,9 @@ const CodeGenerator: React.FC = () => {
       </div>
 
       {/* RIGHT MAIN AREA */}
-      <div className="flex-1 flex flex-col gap-6 order-1 lg:order-2">
+      <div className="flex-1 flex flex-col gap-8 order-1 lg:order-2">
         
-        {/* 1. INPUT AREA (Always Visible) */}
+        {/* 1. INPUT AREA */}
         <div className="bg-white rounded-xl shadow-md border border-slate-200 p-6 transition-all duration-300">
            <label className="block text-lg font-semibold text-slate-800 mb-3 flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-purple-600" />
@@ -197,18 +231,18 @@ const CodeGenerator: React.FC = () => {
                       if(prompt.trim()) handleGenerate();
                     }
                   }}
-                  className="block w-full rounded-xl border-slate-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 text-base p-4 min-h-[120px] resize-y bg-slate-50 focus:bg-white transition-colors"
+                  className="block w-full rounded-xl border-slate-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 text-base p-4 min-h-[100px] resize-y bg-slate-50 focus:bg-white transition-colors"
                   placeholder={code ? "Örn: Mesaj kutusundaki metni değiştir, döngüyü tersten kur..." : "Örn: A sütunundaki boş satırları sil, F5 hücresine dolar kurunu yaz..."}
               />
               
               <div className="mt-3 flex justify-between items-center">
-                 <span className="text-xs text-slate-400">
+                 <span className="text-xs text-slate-400 hidden sm:inline-block">
                     {code ? "Mevcut kod üzerinde değişiklik yapmak için isteğinizi yazın." : "Detaylı açıklama daha iyi sonuç verir."}
                  </span>
                  <button
-                    onClick={handleGenerate}
+                    onClick={() => handleGenerate()}
                     disabled={loading || !prompt.trim()}
-                    className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-white font-medium shadow-md transition-all hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed ${
+                    className={`ml-auto flex items-center gap-2 px-6 py-2.5 rounded-lg text-white font-medium shadow-md transition-all hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed ${
                       code ? 'bg-blue-600 hover:bg-blue-700' : 'bg-purple-600 hover:bg-purple-700'
                     }`}
                 >
@@ -228,11 +262,53 @@ const CodeGenerator: React.FC = () => {
            </div>
         </div>
 
-        {/* 2. OUTPUT AREA (Animated Reveal) */}
-        {/* We use standard Tailwind transition opacity/transform logic instead of non-standard 'animate-in' classes */}
+        {/* 2. TEMPLATES GRID (Only visible if no code is generated yet, or user clears code) */}
+        {!code && !loading && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex items-center gap-2 mb-2">
+              <Zap className="w-5 h-5 text-amber-500" />
+              <h2 className="text-lg font-bold text-slate-800">Hazır Şablonlar</h2>
+              <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">30+ Fikir</span>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {TEMPLATE_CATEGORIES.map((category, catIdx) => (
+                <div key={catIdx} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
+                  <div className="bg-slate-50 px-4 py-2 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    {category.title}
+                  </div>
+                  <div className="p-2 grid gap-1">
+                    {category.items.map((item, itemIdx) => (
+                      <button
+                        key={itemIdx}
+                        onClick={() => handleGenerate(item.prompt)}
+                        className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-purple-50 hover:border-purple-100 border border-transparent transition-all group text-left"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 group-hover:bg-white group-hover:border-purple-200 transition-colors">
+                          {item.icon}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-slate-700 group-hover:text-purple-700 truncate">
+                            {item.label}
+                          </div>
+                          <div className="text-[10px] text-slate-400 line-clamp-1 group-hover:text-purple-400">
+                            {item.prompt}
+                          </div>
+                        </div>
+                        <ArrowRight className="w-3 h-3 text-slate-300 group-hover:text-purple-400 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 3. OUTPUT AREA */}
         <div 
             ref={codeSectionRef}
-            className={`flex-1 bg-white rounded-xl shadow-lg border border-slate-200 flex flex-col overflow-hidden transition-all duration-700 ease-out origin-top min-h-[500px] ${
+            className={`flex-1 bg-white rounded-xl shadow-lg border border-slate-200 flex flex-col overflow-hidden transition-all duration-700 ease-out origin-top min-h-[600px] ${
                 (code || loading) 
                 ? 'opacity-100 translate-y-0 max-h-[2000px]' 
                 : 'opacity-0 -translate-y-4 max-h-0 overflow-hidden hidden'

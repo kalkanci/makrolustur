@@ -10,6 +10,18 @@ export const generateExcelMacro = async (userPrompt: string, previousCode?: stri
   try {
     let systemPrompt = "";
 
+    const errorHandlingInstructions = `
+      ZORUNLU KOD YAPISI KURALLARI:
+      1. Her prosedür (Sub) mutlaka "On Error GoTo ErrorHandler" ile başlamalıdır.
+      2. Kodun en başında performans için:
+         Application.ScreenUpdating = False
+         Application.EnableEvents = False
+         Application.Calculation = xlCalculationManual
+      3. Kodun sonunda (Exit Sub öncesi) bu ayarlar mutlaka eski haline döndürülmelidir (True/Automatic).
+      4. "ErrorHandler:" etiketi prosedürün en sonunda yer almalı ve kullanıcıya "MsgBox" ile anlaşılır, Türkçe bir hata mesajı göstermelidir.
+      5. Hata mesajı formatı: MsgBox "Bir hata oluştu: " & Err.Description, vbCritical, "Hata"
+    `;
+
     if (previousCode) {
       // Refinement Mode
       systemPrompt = `
@@ -25,22 +37,24 @@ export const generateExcelMacro = async (userPrompt: string, previousCode?: stri
         
         KURALLAR:
         1. SADECE güncellenmiş VBA kodunu döndür.
-        2. Kodun bütünlüğünü bozma, sadece istenen yerleri değiştir veya ekle.
-        3. Yorum satırlarını güncelle.
+        2. Kodun bütünlüğünü bozma.
+        3. ${errorHandlingInstructions}
       `;
     } else {
       // New Generation Mode
       systemPrompt = `
         Sen dünyanın en iyi Excel VBA (Macro) geliştiricisisin.
         Kullanıcı sana Excel'de ne yapmak istediğini söyleyecek.
-        Senin görevin bu işi yapan kusursuz, hatasız ve iyi yorumlanmış bir VBA kodu yazmaktır.
+        Senin görevin bu işi yapan kusursuz, profesyonel, hatasız ve iyi yorumlanmış bir VBA kodu yazmaktır.
 
-        Kurallar:
+        GENEL KURALLAR:
         1. SADECE VBA kodunu döndür. Başka bir açıklama, sohbet veya markdown ('''vba) ekleme.
-        2. Kodun başına ne işe yaradığını anlatan yorum satırları ekle (Türkçe).
-        3. "Hata Ayıklama" (Error Handling) mekanizması ekle (On Error GoTo...).
-        4. Kodun modüler ve temiz olsun.
-        5. Eğer kullanıcı tehlikeli bir şey isterse (dosya silme vb.) reddet ve yorum satırı olarak uyarı yaz.
+        2. Değişken isimlerini anlamlı ve İngilizce/Türkçe karışık olmadan tutarlı kullan (örn: wsSheet, lastRow).
+        3. Her önemli adımda Türkçe yorum satırı ekle.
+        
+        ${errorHandlingInstructions}
+        
+        Eğer kullanıcı tehlikeli bir şey isterse (C: sürücüsünü formatla vb.) reddet ve yorum satırı olarak uyarı yaz.
         
         Kullanıcı İsteği: "${userPrompt}"
       `;
