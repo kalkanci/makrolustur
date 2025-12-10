@@ -1,27 +1,25 @@
 import React, { useState } from 'react';
-import CodeGenerator from './components/CodeGenerator';
 import HomeView from './components/HomeView';
 import TemplatesView from './components/TemplatesView';
-import WeatherDisplay from './components/WeatherDisplay';
-import { FileSpreadsheet, Grid3X3, Bell, Menu, Search } from 'lucide-react';
+import { Grid3X3, Bell, Search } from 'lucide-react';
 
-type ViewState = 'home' | 'templates' | 'automation' | 'analysis' | 'settings';
+type ViewState = 'home' | 'templates' | 'analysis' | 'settings';
 
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<ViewState>('home');
   const [showNotifications, setShowNotifications] = useState(false);
   
-  // State to pass prompt from other pages to the generator
+  // State to pass prompt from other pages to the generator (HomeView)
   const [generatorPrompt, setGeneratorPrompt] = useState<string>("");
 
   const handleNavigateToGenerator = (prompt: string) => {
     setGeneratorPrompt(prompt);
-    setActiveView('automation');
+    setActiveView('home');
   };
 
   return (
     <div className="min-h-screen bg-[#F3F4F6] text-slate-900 flex flex-col font-sans selection:bg-emerald-200 selection:text-emerald-900 overflow-hidden">
-      {/* 1. TOP HEADER (Excel Title Bar Style) */}
+      {/* 1. TOP HEADER */}
       <header className="relative z-30 shadow-sm shrink-0">
         <div className="bg-[#107C41] text-white h-12 flex items-center justify-between px-4 relative">
           
@@ -43,7 +41,7 @@ const App: React.FC = () => {
              </div>
           </div>
 
-          {/* Right: User Actions (User Profile Removed) */}
+          {/* Right: User Actions */}
           <div className="flex items-center gap-1">
              <button 
                 onClick={() => setShowNotifications(!showNotifications)}
@@ -66,7 +64,7 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* 2. RIBBON NAVIGATION (Functional) */}
+        {/* 2. RIBBON NAVIGATION */}
         <div className="bg-white border-b border-slate-200 h-11 flex items-center px-4 overflow-x-auto no-scrollbar shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
            <div className="flex gap-1 text-[13px] font-medium text-slate-600 whitespace-nowrap h-full items-center">
               <button 
@@ -81,18 +79,6 @@ const App: React.FC = () => {
               >
                 Şablonlar
               </button>
-              <button 
-                onClick={() => setActiveView('automation')}
-                className={`px-4 py-1.5 rounded transition-all ${activeView === 'automation' ? 'bg-emerald-50 text-[#107C41] font-bold shadow-sm ring-1 ring-emerald-100' : 'hover:bg-slate-100 hover:text-slate-900'}`}
-              >
-                Otomasyon & Makro
-              </button>
-              <button 
-                onClick={() => setActiveView('analysis')}
-                className={`px-4 py-1.5 rounded transition-all ${activeView === 'analysis' ? 'bg-emerald-50 text-[#107C41] font-bold shadow-sm ring-1 ring-emerald-100' : 'hover:bg-slate-100 hover:text-slate-900'}`}
-              >
-                Analiz & Araçlar
-              </button>
            </div>
         </div>
       </header>
@@ -101,47 +87,14 @@ const App: React.FC = () => {
       <main className="flex-1 w-full max-w-[1800px] mx-auto overflow-hidden flex flex-col">
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6 lg:p-8">
             
-            {/* VIEW: HOME */}
+            {/* VIEW: HOME (Code Generator) */}
             {activeView === 'home' && (
-              <HomeView onNavigate={handleNavigateToGenerator} onViewChange={setActiveView} />
+              <HomeView initialPrompt={generatorPrompt} onViewChange={setActiveView} />
             )}
 
             {/* VIEW: TEMPLATES */}
             {activeView === 'templates' && (
               <TemplatesView onSelectTemplate={handleNavigateToGenerator} />
-            )}
-
-            {/* VIEW: AUTOMATION (Code Generator) */}
-            {activeView === 'automation' && (
-              <CodeGenerator initialPrompt={generatorPrompt} />
-            )}
-
-            {/* VIEW: ANALYSIS */}
-            {activeView === 'analysis' && (
-              <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                 <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-purple-100 rounded-lg text-purple-700">
-                       <FileSpreadsheet className="w-6 h-6" />
-                    </div>
-                    <div>
-                       <h2 className="text-2xl font-bold text-slate-800">Analiz & Araçlar</h2>
-                       <p className="text-slate-500 text-sm">Canlı veriler ve yardımcı araçlar.</p>
-                    </div>
-                 </div>
-                 
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <WeatherDisplay />
-                    
-                    {/* Placeholder for future charts */}
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col items-center justify-center text-center min-h-[200px]">
-                       <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-                          <Grid3X3 className="w-8 h-8 text-slate-300" />
-                       </div>
-                       <h3 className="font-semibold text-slate-700">Grafik Modülü</h3>
-                       <p className="text-sm text-slate-400 mt-2">Gelişmiş grafik ve raporlama araçları yakında eklenecek.</p>
-                    </div>
-                 </div>
-              </div>
             )}
 
         </div>

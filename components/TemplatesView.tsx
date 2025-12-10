@@ -1,8 +1,8 @@
 import React from 'react';
 import { 
   Eraser, Search, FileText, FileJson, Sheet, Save, 
-  Lock, Unlock, Eye, PaintBucket, Table, Calculator, 
-  RefreshCw, Mail, Database, BarChart, EyeOff, BookOpen,
+  Lock, PaintBucket, Table, Calculator, 
+  RefreshCw, Mail, Database, BarChart,
   ArrowRight
 } from 'lucide-react';
 

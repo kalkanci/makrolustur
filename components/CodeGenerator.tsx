@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   FileCode, Copy, Check, Download, Sparkles, 
   History, Trash2, RefreshCw, Wand2,
-  AlertTriangle, Sigma, BookOpen,
+  AlertTriangle, Sigma,
   Lightbulb, Info, MousePointerClick,
   FunctionSquare, Home
 } from 'lucide-react';
