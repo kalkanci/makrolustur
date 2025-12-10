@@ -9,6 +9,75 @@ declare const process: {
 };
 
 /**
+ * Interface for the smart solution response
+ */
+export interface SmartSolution {
+  type: 'FORMULA' | 'VBA';
+  title: string;
+  content: string; // The code or the formula
+  explanation: string; // Brief explanation or steps
+  vbaFallbackPrompt?: string; // If it's a formula, what prompt to use if user forces VBA
+}
+
+/**
+ * Analyzes the user request and generates either an Excel Formula or VBA Code.
+ * Returns a structured JSON object.
+ */
+export const generateSmartExcelSolution = async (userPrompt: string): Promise<SmartSolution> => {
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+    const systemPrompt = `
+      Sen dünyanın en iyi Excel uzmanısın. Kullanıcının isteğini analiz et.
+      
+      KARAR MEKANİZMASI:
+      1. Eğer kullanıcının isteği standart Excel formülleriyle (SUM, VLOOKUP, IF, XLOOKUP, TEXTJOIN vb.) çözülebiliyorsa, çözüm türü olarak 'FORMULA' seç.
+      2. Eğer istek otomasyon, dosya işlemi, döngü veya karmaşık veri manipülasyonu gerektiriyorsa 'VBA' seç.
+      
+      ÇIKTI FORMATI (JSON):
+      Aşağıdaki JSON şemasına uygun yanıt ver. Markdown kullanma, sadece saf JSON döndür.
+      
+      {
+        "type": "FORMULA" veya "VBA",
+        "title": "Kısa ve açıklayıcı bir başlık (örn: Düşeyara ile Veri Çekme)",
+        "content": "Excel Formülü veya VBA Kodu buraya",
+        "explanation": "Formül ise: Nasıl kullanılacağı ve ne yaptığı (kısa madde işaretli). VBA ise: Kodun kısa özeti.",
+        "vbaFallbackPrompt": "Eğer çözüm FORMULA ise, kullanıcının bu işlemi VBA ile yapması için gereken teknik prompt ifadesi. Eğer çözüm zaten VBA ise boş bırak."
+      }
+
+      ÖNEMLİ KURALLAR:
+      - Formüller Türkçe Excel uyumlu olsun (örn: IF yerine EĞER, VLOOKUP yerine DÜŞEYARA). Noktalı virgül (;) kullan.
+      - VBA kodu ise, önceki kurallara uygun (Error Handling, Comments) tam bir Sub prosedürü olsun.
+      
+      Kullanıcı İsteği: "${userPrompt}"
+    `;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: systemPrompt,
+      config: {
+        responseMimeType: "application/json"
+      }
+    });
+
+    const text = response.text || "{}";
+    const jsonResponse = JSON.parse(text) as SmartSolution;
+    
+    return jsonResponse;
+
+  } catch (error) {
+    console.error("Akıllı çözüm üretilemedi:", error);
+    // Fallback to VBA generation logic if JSON fails
+    return {
+      type: 'VBA',
+      title: 'Otomatik Makro',
+      content: await generateExcelMacro(userPrompt),
+      explanation: 'İsteğiniz üzerine oluşturulan VBA makrosu.'
+    };
+  }
+};
+
+/**
  * Generates VBA code based on a user's natural language request.
  * Can optionally take previous code and a refinement instruction to edit existing macros.
  */
@@ -93,34 +162,42 @@ export const generateExcelMacro = async (userPrompt: string, previousCode?: stri
 };
 
 /**
- * Analyzes the generated VBA code and provides suggestions.
+ * Fetches the local weather based on internet location using Google Search.
  */
-export const getCodeSuggestions = async (code: string): Promise<string> => {
+export const getLocalWeather = async (): Promise<{ temp: string; condition: string; location: string }> => {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    const prompt = `
-      Sen uzman bir Code Reviewer (Kod İnceleyici) ve Eğitmensin.
-      
-      Aşağıdaki Excel VBA kodunu analiz et ve TÜRKÇE olarak şu formatta kısa bir rapor sun:
-      
-      1. **Kod Özeti**: Kodun ne yaptığını 1 cümle ile açıkla.
-      2. **Geliştirme Önerileri**: Varsa performans veya mantık açısından 2-3 kısa öneri (Madde işareti ile). Yoksa "Kod gayet optimize görünüyor" yaz.
-      3. **Dikkat**: Eğer potansiyel bir risk (sonsuz döngü, dosya silme vs.) varsa belirt.
-      
-      KOD:
-      ${code}
-    `;
 
+    // We rely on Google Search to infer the location from the IP/Request
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: prompt,
+      contents: "What is the current weather? Return a string in this EXACT format: 'Location|Temperature(with unit)|Condition'. Example: 'Istanbul|15°C|Cloudy'. Do not add any other text.",
+      config: {
+        tools: [{ googleSearch: {} }],
+      },
     });
 
-    return response.text || "Analiz yapılamadı.";
+    const text = response.text || "";
+    const parts = text.split('|');
+    
+    if (parts.length >= 3) {
+        return {
+            location: parts[0].trim(),
+            temp: parts[1].trim(),
+            condition: parts[2].trim()
+        };
+    }
+
+    // Fallback parsing if format is slightly off
+    return {
+        location: "Konum",
+        temp: text.match(/(\d+[°C|°F]+)/)?.[0] || "--",
+        condition: text.split(' ')[0] || "Bilinmiyor"
+    };
+
   } catch (error) {
-    console.error("Analiz hatası:", error);
-    return "Şu anda kod analizi yapılamıyor.";
+    console.error("Hava durumu alınamadı:", error);
+    throw error;
   }
 };
 
@@ -129,33 +206,43 @@ export const getCodeSuggestions = async (code: string): Promise<string> => {
  */
 export const getLiveExchangeRate = async (): Promise<{ rate: string; source: string }> => {
   try {
-    // Initialize inside function
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: "What is the current USD to TRY exchange rate? Return just the numeric value.",
+      contents: "What is the current USD to TRY (Turkish Lira) exchange rate? Return a string in this EXACT format: 'RATE|SOURCE'. Example: '32.50|Google Finance'. Just the number for rate. Do not add any other text.",
       config: {
         tools: [{ googleSearch: {} }],
       },
     });
 
     const text = response.text || "";
-    const match = text.match(/(\d+[.,]\d+)/);
-    const rate = match ? match[0] : text.substring(0, 10);
-
-    let source = "Google Search";
-    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    const parts = text.split('|');
     
-    if (chunks && chunks.length > 0) {
-      const webChunk = chunks.find((c: any) => c.web);
-      // Added check to ensure uri exists before passing to URL constructor to fix TS2345
-      if (webChunk?.web?.uri) {
-        source = webChunk.web.title || new URL(webChunk.web.uri).hostname;
-      }
+    // Attempt to get source from grounding metadata
+    let source = "Google Search";
+    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    if (groundingChunks && groundingChunks.length > 0) {
+        const firstWeb = groundingChunks.find(c => c.web?.title);
+        if (firstWeb?.web?.title) {
+            source = firstWeb.web.title;
+        }
     }
 
-    return { rate, source };
+    if (parts.length >= 2) {
+        return {
+            rate: parts[0].trim(),
+            source: parts[1].trim() || source
+        };
+    }
+
+    // Fallback parsing
+    const rateMatch = text.match(/(\d+[.,]\d+)/);
+    return {
+        rate: rateMatch ? rateMatch[0] : "---",
+        source: source
+    };
+
   } catch (error) {
     console.error("Kur bilgisi alınamadı:", error);
     throw error;
