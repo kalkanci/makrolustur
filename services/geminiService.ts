@@ -12,9 +12,9 @@ declare const process: {
  * Interface for the smart solution response
  */
 export interface SmartSolution {
-  type: 'FORMULA' | 'VBA';
+  type: 'FORMULA' | 'VBA' | 'SUGGESTION';
   title: string;
-  content: string; // The code or the formula
+  content: string; // The code, formula, or list of suggestions
   explanation: string; // Brief explanation or steps
   vbaFallbackPrompt?: string; // If it's a formula, what prompt to use if user forces VBA
 }
@@ -30,24 +30,26 @@ export const generateSmartExcelSolution = async (userPrompt: string): Promise<Sm
     const systemPrompt = `
       Sen dünyanın en iyi Excel uzmanısın. Kullanıcının isteğini analiz et.
       
-      KARAR MEKANİZMASI:
-      1. Eğer kullanıcının isteği standart Excel formülleriyle (SUM, VLOOKUP, IF, XLOOKUP, TEXTJOIN vb.) çözülebiliyorsa, çözüm türü olarak 'FORMULA' seç.
-      2. Eğer istek otomasyon, dosya işlemi, döngü veya karmaşık veri manipülasyonu gerektiriyorsa 'VBA' seç.
+      KARAR MEKANİZMASI (ÖNCELİK SIRASI):
+      1. ANLAMSIZ/ALAKASIZ GİRDİ: Eğer girdi Excel ile alakasızsa (örn: "selam", "hava durumu", "nasılsın") veya rastgele harflerse (örn: "asdasf"), type olarak 'SUGGESTION' döndür.
+      2. FORMÜL (Yüksek Öncelik): Eğer istek standart Excel formülleriyle (EĞER, DÜŞEYARA, ETOPLA, FİLTRE vb.) çözülebiliyorsa, çözüm türü olarak 'FORMULA' seç. VBA kullanma. Kullanıcı özellikle "makro" demedikçe FORMÜL önceliklidir.
+      3. VBA: Sadece formülle yapılması imkansızsa (hücre boyama, dosya kaydetme, mail atma) veya kullanıcı "makro" istediyse 'VBA' seç.
       
       ÇIKTI FORMATI (JSON):
       Aşağıdaki JSON şemasına uygun yanıt ver. Markdown kullanma, sadece saf JSON döndür.
       
       {
-        "type": "FORMULA" veya "VBA",
-        "title": "Kısa ve açıklayıcı bir başlık (örn: Düşeyara ile Veri Çekme)",
-        "content": "Excel Formülü veya VBA Kodu buraya",
-        "explanation": "Formül ise: Nasıl kullanılacağı ve ne yaptığı (kısa madde işaretli). VBA ise: Kodun kısa özeti.",
-        "vbaFallbackPrompt": "Eğer çözüm FORMULA ise, kullanıcının bu işlemi VBA ile yapması için gereken teknik prompt ifadesi. Eğer çözüm zaten VBA ise boş bırak."
+        "type": "FORMULA" | "VBA" | "SUGGESTION",
+        "title": "Kısa başlık",
+        "content": "Kod, Formül veya Öneriler Listesi",
+        "explanation": "Açıklama",
+        "vbaFallbackPrompt": "Formula ise VBA için prompt"
       }
 
-      ÖNEMLİ KURALLAR:
-      - Formüller Türkçe Excel uyumlu olsun (örn: IF yerine EĞER, VLOOKUP yerine DÜŞEYARA). Noktalı virgül (;) kullan.
-      - VBA kodu ise, önceki kurallara uygun (Error Handling, Comments) tam bir Sub prosedürü olsun.
+      DETAYLAR:
+      - Type 'SUGGESTION' ise: 'content' alanına kullanıcının Excel'de yapmak isteyebileceği 3-4 farklı işlemi (örn: "Tabloyu renklendir", "Boşlukları sil") aralarına virül koyarak string olarak yaz. 'explanation' kısmına "Ne yapmak istediğinizi tam anlayamadım, şunları deneyebilirsiniz:" yaz.
+      - Type 'FORMULA' ise: Türkçe Excel formülleri kullan (IF->EĞER, ; ayracı).
+      - Type 'VBA' ise: Hata yönetimi içeren tam Sub prosedürü yaz.
       
       Kullanıcı İsteği: "${userPrompt}"
     `;
@@ -89,22 +91,44 @@ export const generateExcelMacro = async (userPrompt: string, previousCode?: stri
     let systemPrompt = "";
 
     const errorHandlingInstructions = `
-      ZORUNLU KOD YAPISI KURALLARI:
-      1. Her prosedür (Sub) mutlaka "On Error GoTo ErrorHandler" ile başlamalıdır.
-      2. Kodun en başında performans için:
+      ZORUNLU KOD YAPISI VE PERFORMANS AYARLARI:
+      1. Kodun EN BAŞINDA (Sub tanımlamasından hemen sonra) performansı artırmak için şu ayarları kapat:
          Application.ScreenUpdating = False
          Application.EnableEvents = False
          Application.Calculation = xlCalculationManual
-      3. Kodun sonunda (Exit Sub öncesi) bu ayarlar mutlaka eski haline döndürülmelidir (True/Automatic).
-      4. "ErrorHandler:" etiketi prosedürün en sonunda yer almalı ve kullanıcıya "MsgBox" ile anlaşılır, Türkçe bir hata mesajı göstermelidir.
-      5. Hata mesajı formatı: MsgBox "Bir hata oluştu: " & Err.Description, vbCritical, "Hata"
-      6. OKUNABİLİRLİK: Her Döngü (For, Do, While) ve Koşul (If, Select Case) bloğunun başlangıcına ve bitişine ne yaptığını anlatan yorum satırları ekle.
-         Örnek:
-         ' --- Döngü Başlangıcı: Satırları Tara ---
-         For i = 1 To lastRow
-            ' ... kodlar ...
-         Next i
-         ' --- Döngü Sonu ---
+      
+      2. Kodun EN SONUNDA (Exit Sub veya End Sub öncesi) bu ayarları MUTLAKA eski haline döndür:
+         Application.ScreenUpdating = True
+         Application.EnableEvents = True
+         Application.Calculation = xlCalculationAutomatic
+
+      3. Hata Yönetimi (Error Handling):
+         - Kodun başında "On Error GoTo ErrorHandler" kullan.
+         - Kodun sonunda, "ErrorHandler:" etiketinden önce "Exit Sub" ekle.
+         - "ErrorHandler:" bloğunda, yukarıdaki Application ayarlarını (ScreenUpdating vb.) tekrar True/Automatic yap (böylece hata olsa bile Excel kilitli kalmaz) ve MsgBox ile hatayı göster.
+      
+      4. Kod Yapısı Örneği:
+         Sub OrnekMakro()
+             On Error GoTo ErrorHandler
+             Application.ScreenUpdating = False
+             Application.EnableEvents = False
+             Application.Calculation = xlCalculationManual
+             
+             ' ... KODLAR BURAYA ...
+             
+         SafeExit:
+             Application.ScreenUpdating = True
+             Application.EnableEvents = True
+             Application.Calculation = xlCalculationAutomatic
+             Exit Sub
+             
+         ErrorHandler:
+             MsgBox "Bir hata oluştu: " & Err.Description, vbCritical, "Hata"
+             Resume SafeExit
+         End Sub
+
+      5. Okunabilirlik:
+         - Her işlem adımı için Türkçe yorum satırları (') ekle.
     `;
 
     if (previousCode) {
@@ -128,18 +152,14 @@ export const generateExcelMacro = async (userPrompt: string, previousCode?: stri
     } else {
       // New Generation Mode
       systemPrompt = `
-        Sen dünyanın en iyi Excel VBA (Macro) geliştiricisisin.
+        Sen dünyanın en iyi Excel VBA (Makro) geliştiricisisin.
         Kullanıcı sana Excel'de ne yapmak istediğini söyleyecek.
         Senin görevin bu işi yapan kusursuz, profesyonel, hatasız ve iyi yorumlanmış bir VBA kodu yazmaktır.
 
         GENEL KURALLAR:
         1. SADECE VBA kodunu döndür. Başka bir açıklama, sohbet veya markdown ('''vba) ekleme.
-        2. Değişken isimlerini anlamlı ve İngilizce/Türkçe karışık olmadan tutarlı kullan (örn: wsSheet, lastRow).
-        3. Her önemli adımda Türkçe yorum satırı ekle.
-        
-        ${errorHandlingInstructions}
-        
-        Eğer kullanıcı tehlikeli bir şey isterse (C: sürücüsünü formatla vb.) reddet ve yorum satırı olarak uyarı yaz.
+        2. Değişken isimlerini anlamlı (wsData, lastRow vb.) kullan.
+        3. ${errorHandlingInstructions}
         
         Kullanıcı İsteği: "${userPrompt}"
       `;

@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  FileCode, Copy, Check, Download, Sparkles, 
+  FileCode, Copy, Check, Download, 
   History, Trash2, RefreshCw, Wand2,
   AlertTriangle, Sigma,
   Lightbulb, Info, MousePointerClick,
-  FunctionSquare, Home
+  FunctionSquare, Home, Zap, Sparkles,
+  LayoutTemplate, ChevronDown, ChevronRight,
+  Eraser, FileJson,
+  BarChart, PaintBucket,
+  HelpCircle, Keyboard, Play
 } from 'lucide-react';
 import { generateExcelMacro, generateSmartExcelSolution, SmartSolution } from '../services/geminiService';
 
@@ -13,180 +17,340 @@ interface HistoryItem {
   prompt: string;
   code: string;
   date: Date;
-  type: 'VBA' | 'FORMULA';
+  type: 'VBA' | 'FORMULA' | 'SUGGESTION';
 }
 
 interface CodeGeneratorProps {
   initialPrompt?: string;
 }
 
-// Simple VBA Syntax Highlighter Component
+// Template Data
+const TEMPLATE_CATEGORIES = [
+  {
+    id: 'clean',
+    title: "Veri Temizleme",
+    icon: Eraser,
+    items: [
+      { label: "Boş Satırları Sil", prompt: "Aktif sayfadaki A sütunu boş olan tüm satırları bul ve tamamen sil." },
+      { label: "Mükerrerleri Kaldır", prompt: "A sütunundaki tekrar eden verileri bul ve satırları tamamen kaldır, sadece benzersizler kalsın." },
+      { label: "Boşlukları Kırp", prompt: "Seçili alandaki tüm hücrelerin başında ve sonundaki gereksiz boşlukları temizle." },
+      { label: "Birleştirilmişleri Çöz", prompt: "Sayfadaki tüm birleştirilmiş (merged) hücreleri çöz ve değerleri doldur." },
+    ]
+  },
+  {
+    id: 'file',
+    title: "Dosya Yönetimi",
+    icon: FileJson,
+    items: [
+      { label: "PDF Olarak Kaydet", prompt: "Aktif sayfayı masaüstüne bugünün tarihiyle isimlendirilmiş bir PDF dosyası olarak kaydet." },
+      { label: "Sayfaları Listele", prompt: "Yeni bir 'Index' sayfası oluştur ve kitaptaki tüm sayfaların isimlerini linkli (hyperlink) olarak listele." },
+      { label: "Tüm Sayfaları Koru", prompt: "Kitaptaki tüm sayfaları '1234' şifresi ile korumaya al (Protect)." },
+    ]
+  },
+  {
+    id: 'analysis',
+    title: "Analiz & Rapor",
+    icon: BarChart,
+    items: [
+      { label: "Pivot Tablo Oluştur", prompt: "A1'den başlayan verileri kullanarak yeni bir sayfada özet bir Pivot Tablo oluştur." },
+      { label: "Otomatik Filtrele", prompt: "Tablo başlıklarına otomatik filtre ekle ve ilk sütuna göre A'dan Z'ye sırala." },
+      { label: "Düşeyara ile Birleştir", prompt: "Sayfa2'den verileri DÜŞEYARA (VLOOKUP) kullanarak Sayfa1'e eşleştir ve getir." },
+    ]
+  },
+  {
+    id: 'visual',
+    title: "Görünüm",
+    icon: PaintBucket,
+    items: [
+      { label: "Zebra Boyama", prompt: "Tablodaki satırları okunabilirliği artırmak için birer atlayarak açık gri renge boya." },
+      { label: "Otomatik Sığdır", prompt: "Tüm sayfadaki sütun genişliklerini içeriklerine göre otomatik ayarla (AutoFit)." },
+      { label: "Başlıkları Dondur", prompt: "İlk satırı (başlıkları) dondur (Freeze Panes) böylece kaydırınca sabit kalsın." },
+    ]
+  }
+];
+
+// Local Suggestion Pool
+const SUGGESTION_POOL = [
+  "A sütunundaki boş satırları sil",
+  "Tüm formülleri değere çevir",
+  "Sayfayı PDF olarak kaydet",
+  "Mükerrer kayıtları kaldır",
+  "Sayfa isimlerini listele",
+  "Hücre rengi kırmızı olanları topla",
+  "Gizli sayfaları göster",
+  "İki tarih arasındaki iş günlerini hesapla"
+];
+
+// --- COMPONENTS ---
+
+// iOS Style Segmented Control
+const SegmentedControl = ({ 
+    options, 
+    selected, 
+    onChange,
+    disabled = false
+}: { 
+    options: { id: string, label: string, icon?: React.ElementType }[], 
+    selected: string, 
+    onChange: (id: any) => void,
+    disabled?: boolean
+}) => {
+    return (
+        <div className={`p-1 bg-slate-200/70 rounded-lg flex relative ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
+            {options.map((opt) => {
+                const isSelected = selected === opt.id;
+                return (
+                    <button
+                        key={opt.id}
+                        onClick={() => onChange(opt.id)}
+                        className={`
+                            flex-1 flex items-center justify-center gap-2 py-1.5 px-3 text-xs font-semibold rounded-md transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] relative z-10
+                            ${isSelected ? 'text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}
+                        `}
+                    >
+                        {opt.icon && <opt.icon className={`w-3.5 h-3.5 ${isSelected ? 'text-[#007AFF]':''}`} />}
+                        {opt.label}
+                    </button>
+                );
+            })}
+            {/* Sliding Background */}
+            <div 
+                className="absolute top-1 bottom-1 bg-white rounded-md shadow-sm transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]"
+                style={{
+                    left: '4px',
+                    width: `calc((100% - 8px) / ${options.length})`,
+                    transform: `translateX(${options.findIndex(o => o.id === selected) * 100}%)`
+                }}
+            />
+        </div>
+    );
+};
+
+// Simple VBA Syntax Highlighter
 const VbaCodeViewer: React.FC<{ code: string }> = ({ code }) => {
   const lines = code.split('\n');
-  const keywords = ["Sub", "End Sub", "Dim", "As", "Set", "If", "Then", "Else", "End If", "For", "Next", "To", "MsgBox", "Call", "Function", "End Function", "On Error", "GoTo", "Resume", "True", "False", "Nothing", "With", "End With", "ActiveSheet", "Range", "Cells", "Application", "Worksheets", "Workbook", "Option Explicit"];
+  const keywords = ["Sub", "End Sub", "Dim", "As", "Set", "If", "Then", "Else", "End If", "For", "Next", "To", "MsgBox", "Call", "Function", "End Function", "On Error", "GoTo", "Resume", "True", "False", "Nothing", "With", "End With", "ActiveSheet", "Range", "Cells", "Application", "Worksheets", "Workbook", "Option Explicit", "Exit", "Do", "Loop", "While", "Private", "Public"];
   
   return (
-    <pre className="font-mono text-sm leading-6 whitespace-pre-wrap break-words text-slate-800">
-      {lines.map((line, idx) => {
-        // Handle Comments (Green)
-        const commentIndex = line.indexOf("'");
-        if (commentIndex !== -1) {
-          const codePart = line.substring(0, commentIndex);
-          const commentPart = line.substring(commentIndex);
-          return (
-            <div key={idx}>
-              <span dangerouslySetInnerHTML={{ __html: highlightKeywords(codePart, keywords) }} />
-              <span className="text-emerald-600 italic">{commentPart}</span>
-            </div>
-          );
-        }
-        return (
-          <div key={idx} dangerouslySetInnerHTML={{ __html: highlightKeywords(line, keywords) }} />
-        );
-      })}
-    </pre>
+    <div className="flex font-mono text-[13px] leading-6 bg-white min-h-[300px]">
+      <div className="shrink-0 text-right pr-3 pl-3 py-4 text-slate-300 border-r border-slate-50 bg-slate-50/30 select-none">
+        {lines.map((_, i) => <div key={i}>{i + 1}</div>)}
+      </div>
+      <div className="flex-1 overflow-x-auto custom-scrollbar">
+        <pre className="whitespace-pre-wrap break-words p-4 text-slate-800">
+          {lines.map((line, idx) => {
+            const commentIndex = line.indexOf("'");
+            if (commentIndex !== -1) {
+              const codePart = line.substring(0, commentIndex);
+              const commentPart = line.substring(commentIndex);
+              return (
+                <div key={idx}>
+                  <span dangerouslySetInnerHTML={{ __html: highlightKeywords(codePart, keywords) }} />
+                  <span className="text-emerald-600/90 italic">{commentPart}</span>
+                </div>
+              );
+            }
+            return (
+              <div key={idx} dangerouslySetInnerHTML={{ __html: highlightKeywords(line, keywords) }} />
+            );
+          })}
+        </pre>
+      </div>
+    </div>
   );
 };
 
-// Helper to highlight keywords in a string (returns HTML string)
 const highlightKeywords = (text: string, keywords: string[]) => {
   if(!text) return "";
   let html = text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"([^"]*)"/g, '<span class="text-amber-600">"$1"</span>'); // Strings in Amber/Brown
+    .replace(/"([^"]*)"/g, '<span class="text-[#D93425]">$1</span>'); // String Red/Brown
 
   keywords.forEach(kw => {
-     // Case insensitive whole word match
      const regex = new RegExp(`\\b${kw}\\b`, 'gi');
-     // Replace with same case but wrapped - standard VBA Blue
-     html = html.replace(regex, (match) => `<span class="text-blue-800 font-bold">${match}</span>`);
+     html = html.replace(regex, (match) => `<span class="text-[#0000FF] font-semibold">${match}</span>`); // VBA Blue
   });
   return html;
 };
 
-// VBA Code Validator
+// Validate VBA Structure
 const validateVbaCode = (code: string): string[] => {
   const issues: string[] = [];
   const lines = code.split('\n');
-  
-  let openSubs = 0;
-  let openFuncs = 0;
-  let openWiths = 0;
-  let openFors = 0;
+  let openSubs = 0, openFuncs = 0, openWiths = 0, openFors = 0;
 
   for (let line of lines) {
     const trimmed = line.trim();
-    const commentIdx = trimmed.indexOf("'");
-    const content = (commentIdx > -1 ? trimmed.substring(0, commentIdx) : trimmed).trim();
+    if (!trimmed || trimmed.startsWith("'")) continue;
     
-    if (!content) continue;
-
-    // Sub / End Sub
-    if (/^(Private\s+|Public\s+)?Sub\s+/i.test(content) && !/^End\s+Sub/i.test(content) && !/^Exit\s+Sub/i.test(content)) openSubs++;
-    if (/^End\s+Sub$/i.test(content)) openSubs--;
-
-    // Function / End Function
-    if (/^(Private\s+|Public\s+)?Function\s+/i.test(content) && !/^End\s+Function/i.test(content) && !/^Exit\s+Function/i.test(content)) openFuncs++;
-    if (/^End\s+Function$/i.test(content)) openFuncs--;
-
-    // With / End With
-    if (/^With\s+/i.test(content)) openWiths++;
-    if (/^End\s+With$/i.test(content)) openWiths--;
-
-    // For / Next
-    if (/^For\s+/i.test(content)) openFors++;
-    if (/^Next(\s+.*)?$/i.test(content)) openFors--;
+    // Simplistic Check
+    if (/^(Private\s+|Public\s+)?Sub\s+/i.test(trimmed) && !/^End\s+Sub/i.test(trimmed) && !/^Exit\s+Sub/i.test(trimmed)) openSubs++;
+    if (/^End\s+Sub/i.test(trimmed)) openSubs--;
+    if (/^(Private\s+|Public\s+)?Function\s+/i.test(trimmed) && !/^End\s+Function/i.test(trimmed) && !/^Exit\s+Function/i.test(trimmed)) openFuncs++;
+    if (/^End\s+Function/i.test(trimmed)) openFuncs--;
+    if (/^With\s+/i.test(trimmed)) openWiths++;
+    if (/^End\s+With/i.test(trimmed)) openWiths--;
+    if (/^For\s+/i.test(trimmed)) openFors++;
+    if (/^Next/i.test(trimmed)) openFors--;
   }
 
-  if (openSubs !== 0) issues.push(openSubs > 0 ? "Eksik 'End Sub' ifadesi var." : "Fazladan 'End Sub' ifadesi var.");
-  if (openFuncs !== 0) issues.push(openFuncs > 0 ? "Eksik 'End Function' ifadesi var." : "Fazladan 'End Function' ifadesi var.");
-  if (openWiths !== 0) issues.push(openWiths > 0 ? "Eksik 'End With' ifadesi var." : "Fazladan 'End With' ifadesi var.");
-  if (openFors !== 0) issues.push(openFors > 0 ? "Eksik 'Next' ifadesi var." : "Fazladan 'Next' ifadesi var.");
+  if (openSubs !== 0) issues.push(openSubs > 0 ? "Eksik 'End Sub'" : "Fazladan 'End Sub'");
+  if (openFuncs !== 0) issues.push(openFuncs > 0 ? "Eksik 'End Function'" : "Fazladan 'End Function'");
+  if (openWiths !== 0) issues.push(openWiths > 0 ? "Eksik 'End With'" : "Fazladan 'End With'");
+  if (openFors !== 0) issues.push(openFors > 0 ? "Eksik 'Next'" : "Fazladan 'Next'");
 
   return issues;
 };
 
+// --- BEGINNER INSTRUCTION COMPONENTS ---
+
+const InstructionStep = ({ num, text, icon }: { num: number, text: React.ReactNode, icon?: React.ReactNode }) => (
+    <div className="flex items-start gap-3">
+        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center text-xs font-bold mt-0.5">
+            {num}
+        </div>
+        <div className="flex-1 text-sm text-slate-700 leading-snug pt-0.5">
+           {text}
+        </div>
+        {icon && <div className="text-slate-400">{icon}</div>}
+    </div>
+);
+
+const FormulaInstructions = () => (
+    <div className="bg-emerald-50/70 border border-emerald-100 rounded-xl p-5 mb-6">
+        <h4 className="flex items-center gap-2 text-sm font-bold text-emerald-800 mb-4">
+            <Info className="w-4 h-4" />
+            Nasıl Kullanılır? (Formül)
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <InstructionStep num={1} text={<span>Sağdaki <b>Kopyala</b> butonuna basarak formülü alın.</span>} icon={<Copy className="w-4 h-4" />} />
+            <InstructionStep num={2} text="Excel'de işlem yapmak istediğiniz hücreye çift tıklayın." icon={<MousePointerClick className="w-4 h-4" />} />
+            <InstructionStep num={3} text={<span>Formülü yapıştırın (CTRL+V) ve <b>Enter</b> tuşuna basın.</span>} icon={<Keyboard className="w-4 h-4" />} />
+        </div>
+    </div>
+);
+
+const VbaInstructions = () => (
+    <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-5 mb-6">
+        <h4 className="flex items-center gap-2 text-sm font-bold text-blue-800 mb-4">
+            <HelpCircle className="w-4 h-4" />
+            Nasıl Kullanılır? (Makro)
+        </h4>
+        <div className="grid grid-cols-1 gap-3">
+            <InstructionStep num={1} text={<span>Excel'de klavyenizden <b>ALT</b> ve <b>F11</b> tuşlarına aynı anda basın.</span>} icon={<Keyboard className="w-4 h-4" />} />
+            <InstructionStep num={2} text={<span>Açılan pencerenin üst menüsünden <b>Insert</b> &gt; <b>Module</b> seçeneğine tıklayın.</span>} />
+            <InstructionStep num={3} text="Aşağıdaki kodu açılan beyaz sayfaya yapıştırın." icon={<Copy className="w-4 h-4" />} />
+            <InstructionStep num={4} text={<span>Çalıştırmak için klavyeden <b>F5</b> tuşuna basın.</span>} icon={<Play className="w-4 h-4" />} />
+        </div>
+    </div>
+);
+
+// --- MAIN COMPONENT ---
+
 const CodeGenerator: React.FC<CodeGeneratorProps> = ({ initialPrompt }) => {
+  // --- STATES ---
   const [prompt, setPrompt] = useState<string>("");
-  const [code, setCode] = useState<string>(""); // Acts as Content for Formula or VBA
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [code, setCode] = useState<string>(""); 
   
-  // State for Smart Solution
-  const [solutionType, setSolutionType] = useState<'VBA' | 'FORMULA' | null>(null);
+  const [solutionType, setSolutionType] = useState<'VBA' | 'FORMULA' | 'SUGGESTION' | null>(null);
   const [solutionTitle, setSolutionTitle] = useState<string>("");
   const [solutionExplanation, setSolutionExplanation] = useState<string>("");
   const [vbaFallbackPrompt, setVbaFallbackPrompt] = useState<string>("");
+  
+  // Caching
+  const [cachedFormula, setCachedFormula] = useState<string | null>(null);
+  const [cachedVBA, setCachedVBA] = useState<string | null>(null);
   
   const [loading, setLoading] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   
+  const [sidebarTab, setSidebarTab] = useState<'templates' | 'history'>('templates');
+  const [expandedCategory, setExpandedCategory] = useState<string | null>('clean');
+  
   const codeSectionRef = useRef<HTMLDivElement>(null);
   const hasRunInitial = useRef(false);
 
-  // Handle Initial Prompt (Navigated from other page)
+  // --- EFFECTS ---
+
   useEffect(() => {
     if (initialPrompt && initialPrompt.trim() !== "" && !hasRunInitial.current) {
       setPrompt(initialPrompt);
-      // Auto-trigger generation
       handleSmartGenerate(initialPrompt);
       hasRunInitial.current = true;
     } else if (!initialPrompt) {
-        // Reset if we navigated here empty
         setPrompt("");
-        setCode("");
-        setSolutionType(null);
+        handleReset();
         hasRunInitial.current = false;
     }
   }, [initialPrompt]);
 
-  // Load history
   useEffect(() => {
     const saved = localStorage.getItem('macro_history');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         setHistory(parsed.map((i: any) => ({ ...i, date: new Date(i.date) })));
-      } catch (e) { console.error("History parse error", e); }
+      } catch (e) { console.error(e); }
     }
   }, []);
 
-  // Save history
   useEffect(() => {
     localStorage.setItem('macro_history', JSON.stringify(history));
   }, [history]);
 
-  // Scroll to code section when it appears
   useEffect(() => {
     if ((code || loading) && codeSectionRef.current) {
+        // Smooth scroll with a slight delay to allow animation frame
         setTimeout(() => {
             codeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 100);
+        }, 400);
     }
   }, [code, loading]);
+
+  // --- HANDLERS ---
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setPrompt(val);
+    if (val.length > 2) {
+      const lowerVal = val.toLowerCase();
+      setSuggestions(SUGGESTION_POOL.filter(item => item.toLowerCase().includes(lowerVal)).slice(0, 5));
+    } else {
+      setSuggestions([]);
+    }
+  };
+
+  const applySuggestion = (suggestion: string) => {
+    setPrompt(suggestion);
+    setSuggestions([]);
+  };
 
   const handleSmartGenerate = async (templatePrompt?: string) => {
     const promptToUse = templatePrompt || prompt;
     if (!promptToUse.trim()) return;
     
     if(templatePrompt) setPrompt(templatePrompt);
+    setSuggestions([]); 
 
-    // If we already have VBA code and user is refining it, stick to VBA refinement
     const isVbaRefinement = solutionType === 'VBA' && !!code && !templatePrompt;
 
     setLoading(true);
     setValidationErrors([]);
+    setCachedFormula(null);
+    setCachedVBA(null);
     
     try {
         if (isVbaRefinement) {
-            // Refinement path (only for VBA)
             const result = await generateExcelMacro(promptToUse, code);
             setCode(result);
+            setCachedVBA(result);
             setValidationErrors(validateVbaCode(result));
         } else {
-            // Smart New Generation Path
             const solution: SmartSolution = await generateSmartExcelSolution(promptToUse);
             setSolutionType(solution.type);
             setCode(solution.content);
@@ -194,11 +358,16 @@ const CodeGenerator: React.FC<CodeGeneratorProps> = ({ initialPrompt }) => {
             setSolutionExplanation(solution.explanation);
             setVbaFallbackPrompt(solution.vbaFallbackPrompt || promptToUse);
 
-            if (solution.type === 'VBA') {
+            if (solution.type === 'FORMULA') {
+                setCachedFormula(solution.content);
+            } else if (solution.type === 'VBA') {
+                setCachedVBA(solution.content);
                 setValidationErrors(validateVbaCode(solution.content));
+            } else {
+                // SUGGESTION TYPE
+                // Content comes as a CSV string or similar, no validation needed
             }
             
-            // Add to history
             const newItem: HistoryItem = {
                 id: Date.now().toString(),
                 prompt: promptToUse,
@@ -210,26 +379,34 @@ const CodeGenerator: React.FC<CodeGeneratorProps> = ({ initialPrompt }) => {
         }
     } catch (error) {
         console.error(error);
-        setCode("' Bir hata oluştu. Lütfen tekrar deneyin.\n' " + error);
-        setSolutionType('VBA'); // Fallback error display
+        setCode("' Bir hata oluştu.\n' " + error);
+        setSolutionType('VBA'); 
     } finally {
         setLoading(false);
     }
   };
 
-  const handleForceVBA = async () => {
-      // User saw Formula but wants VBA
+  const handleSwitchToVBA = async () => {
+      setSolutionType('VBA');
+      if (cachedVBA) {
+          setCode(cachedVBA);
+          setValidationErrors(validateVbaCode(cachedVBA));
+          return;
+      }
       setLoading(true);
       try {
           const vbaCode = await generateExcelMacro(vbaFallbackPrompt || prompt);
-          setSolutionType('VBA');
           setCode(vbaCode);
+          setCachedVBA(vbaCode);
           setValidationErrors(validateVbaCode(vbaCode));
-          setSolutionTitle("Özel Makro (VBA)");
-      } catch (e) {
-          console.error(e);
-      } finally {
-          setLoading(false);
+      } catch (e) { console.error(e); } finally { setLoading(false); }
+  };
+
+  const handleSwitchToFormula = () => {
+      if (cachedFormula) {
+          setSolutionType('FORMULA');
+          setCode(cachedFormula);
+          setValidationErrors([]);
       }
   };
 
@@ -237,22 +414,24 @@ const CodeGenerator: React.FC<CodeGeneratorProps> = ({ initialPrompt }) => {
     setPrompt(item.prompt);
     setCode(item.code);
     setSolutionType(item.type || 'VBA');
-    
-    if (item.type === 'VBA' || !item.type) {
-        const errors = validateVbaCode(item.code);
-        setValidationErrors(errors);
+    setSuggestions([]);
+    if (item.type === 'FORMULA') {
+        setCachedFormula(item.code);
+        setCachedVBA(null);
+    } else if (item.type === 'VBA') {
+        setCachedVBA(item.code);
+        setCachedFormula(null);
+        setValidationErrors(validateVbaCode(item.code));
     }
-  };
-
-  const deleteHistoryItem = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setHistory(prev => prev.filter(i => i.id !== id));
   };
 
   const handleReset = () => {
     setCode("");
     setPrompt("");
+    setSuggestions([]);
     setSolutionType(null);
+    setCachedFormula(null);
+    setCachedVBA(null);
     setCopied(false);
     setValidationErrors([]);
   };
@@ -276,291 +455,328 @@ const CodeGenerator: React.FC<CodeGeneratorProps> = ({ initialPrompt }) => {
     document.body.removeChild(a);
   };
 
+  const toggleCategory = (catId: string) => setExpandedCategory(expandedCategory === catId ? null : catId);
+
+  const deleteHistoryItem = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setHistory(prev => prev.filter(item => item.id !== id));
+  };
+
+  const showOutput = code || loading;
+
   return (
-    <div className="flex flex-col lg:flex-row gap-6 h-full animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="flex flex-col lg:flex-row gap-6 h-full items-start px-1">
       
-      {/* LEFT SIDEBAR: History */}
-      <div className="lg:w-72 w-full flex flex-col gap-6 shrink-0 order-2 lg:order-1">
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-0 flex flex-col max-h-[600px] lg:sticky lg:top-0 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-             <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                <History className="w-4 h-4 text-[#107C41]" />
-                Son İşlemler
-             </h3>
-             <span className="text-[10px] text-slate-400 font-mono bg-white px-2 py-0.5 rounded border border-slate-100">{history.length}</span>
-          </div>
-          <div className="overflow-y-auto flex-1 p-3 pr-1 custom-scrollbar space-y-2 max-h-[500px]">
-            {history.length === 0 ? (
-              <div className="text-center text-xs text-slate-400 py-8 flex flex-col items-center gap-2">
-                 <div className="p-3 bg-slate-50 rounded-full">
-                    <History className="w-6 h-6 text-slate-300" />
-                 </div>
-                 Henüz geçmiş yok.
-              </div>
-            ) : (
-              history.map((item) => (
-                <div 
-                  key={item.id}
-                  onClick={() => loadFromHistory(item)}
-                  className="group relative p-3 rounded-md border border-slate-100 bg-white hover:border-[#107C41]/30 hover:shadow-sm cursor-pointer transition-all"
-                >
-                  <div className="flex justify-between items-start mb-1 gap-2">
-                      <div className="text-xs font-medium text-slate-700 line-clamp-2 leading-relaxed">
-                        {item.prompt}
-                      </div>
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ml-auto shrink-0 uppercase tracking-tight ${
-                          item.type === 'FORMULA' 
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
-                          : 'bg-blue-50 text-blue-700 border border-blue-100'
-                      }`}>
-                          {item.type === 'FORMULA' ? 'Formül' : 'Makro'}
-                      </span>
-                  </div>
-                  <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-1">
-                    <span>{item.date.toLocaleDateString()}</span>
-                  </div>
-                  <button 
-                    onClick={(e) => deleteHistoryItem(e, item.id)}
-                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-all"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
+      {/* --- SIDEBAR (iPad Split View Style) --- */}
+      <div className="lg:w-80 w-full shrink-0 lg:order-1 h-auto lg:h-[calc(100vh-180px)] sticky top-20 flex flex-col">
+        <div className="bg-white/70 backdrop-blur-xl border border-white/50 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden flex flex-col h-full ring-1 ring-slate-900/5">
+            
+            {/* Sidebar Tabs */}
+            <div className="p-3 border-b border-slate-100">
+                <SegmentedControl 
+                    options={[
+                        { id: 'templates', label: 'Şablonlar', icon: LayoutTemplate },
+                        { id: 'history', label: 'Geçmiş', icon: History }
+                    ]}
+                    selected={sidebarTab}
+                    onChange={(id) => setSidebarTab(id)}
+                />
+            </div>
+
+            {/* Sidebar Content */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3">
+                
+                {/* TEMPLATES TAB */}
+                {sidebarTab === 'templates' && TEMPLATE_CATEGORIES.map((cat) => (
+                    <div key={cat.id} className="bg-white/60 rounded-xl overflow-hidden shadow-sm ring-1 ring-slate-900/5 transition-all">
+                        <button 
+                            onClick={() => toggleCategory(cat.id)}
+                            className="w-full flex items-center justify-between p-3.5 text-left hover:bg-white/80 transition-colors"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="p-1.5 bg-[#007AFF]/10 rounded-lg text-[#007AFF]">
+                                    {React.createElement(cat.icon, { className: "w-4 h-4" })}
+                                </div>
+                                <span className="text-sm font-semibold text-slate-800">{cat.title}</span>
+                            </div>
+                            <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform duration-300 ${expandedCategory === cat.id ? 'rotate-90' : ''}`} />
+                        </button>
+                        
+                        {/* Accordion Content */}
+                        <div className={`overflow-hidden transition-all duration-300 ease-out ${expandedCategory === cat.id ? 'max-h-60 opacity-100' : 'max-h-0 opacity-0'}`}>
+                            <div className="bg-slate-50/50 pb-2">
+                                {cat.items.map((item, idx) => (
+                                    <button 
+                                        key={idx}
+                                        onClick={() => handleSmartGenerate(item.prompt)}
+                                        className="w-full text-left px-4 pl-12 py-2.5 text-[13px] text-slate-600 hover:text-[#007AFF] hover:bg-white border-l-2 border-transparent hover:border-[#007AFF] transition-all flex items-center gap-2"
+                                    >
+                                        {item.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+
+                {/* HISTORY TAB */}
+                {sidebarTab === 'history' && (
+                    history.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-10 text-slate-400 gap-2">
+                            <History className="w-8 h-8 opacity-20" />
+                            <span className="text-xs">Geçmiş boş</span>
+                        </div>
+                    ) : (
+                        history.map((item) => (
+                            <button 
+                                key={item.id}
+                                onClick={() => loadFromHistory(item)}
+                                className="w-full text-left group p-3 rounded-xl bg-white border border-slate-100 hover:border-blue-300/50 hover:shadow-md transition-all relative overflow-hidden"
+                            >
+                                <div className="flex justify-between items-start gap-2 mb-1">
+                                    <span className="text-[13px] font-medium text-slate-700 line-clamp-2 leading-snug">{item.prompt}</span>
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold shrink-0 ${item.type === 'FORMULA' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+                                        {item.type === 'FORMULA' ? 'F' : 'VBA'}
+                                    </span>
+                                </div>
+                                <div className="text-[10px] text-slate-400">{item.date.toLocaleDateString()}</div>
+                                <div 
+                                    onClick={(e) => { e.stopPropagation(); deleteHistoryItem(e, item.id); }}
+                                    className="absolute right-0 top-0 bottom-0 w-8 bg-red-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100 text-red-500"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </div>
+                            </button>
+                        ))
+                    )
+                )}
+            </div>
         </div>
       </div>
 
-      {/* RIGHT MAIN AREA */}
-      <div className="flex-1 flex flex-col gap-6 order-1 lg:order-2">
+      {/* --- MAIN CONTENT --- */}
+      <div className="flex-1 flex flex-col gap-6 lg:order-2 min-w-0">
         
-        {/* 1. INPUT AREA */}
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-1 transition-all duration-300">
-           {/* Excel-like Input Header */}
-           <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-100 rounded-t-lg">
+        {/* 1. INPUT CARD */}
+        <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-white/60 p-1 relative z-20 ring-1 ring-slate-900/5 transition-all focus-within:ring-[#007AFF]/30 focus-within:shadow-[0_4px_25px_rgba(0,122,255,0.08)]">
+           {/* Header */}
+           <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100/80">
              <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-[#107C41]" />
-                {code ? (solutionType === 'FORMULA' ? "Yeni Sorgu" : "Revize Et") : "Otomasyon Asistanı"}
+                <Sparkles className="w-4 h-4 text-[#007AFF]" />
+                {code ? (solutionType === 'FORMULA' ? "Sorgu Düzenle" : "Makro Düzenle") : "Ne yapmak istersiniz?"}
              </label>
              {code && (
-                <button 
-                  onClick={handleReset}
-                  className="flex items-center gap-2 text-xs text-slate-600 hover:text-[#107C41] hover:bg-emerald-50 px-2 py-1 rounded transition-colors font-medium"
-                >
-                  <Home className="w-3 h-3" />
-                  Temizle
+                <button onClick={handleReset} className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-red-500 px-2 py-1 rounded-md hover:bg-red-50 transition-colors font-medium">
+                  <Home className="w-3.5 h-3.5" />
+                  Sıfırla
                 </button>
              )}
            </div>
            
-           <div className="p-4">
-              <div className="relative">
-                 {/* Input resembling Excel Grid/Cell */}
+           <div className="p-5 relative">
                  <textarea 
                      value={prompt}
-                     onChange={(e) => setPrompt(e.target.value)}
-                     onKeyDown={(e) => {
-                       if(e.key === 'Enter' && !e.shiftKey) {
-                         e.preventDefault();
-                         if(prompt.trim()) handleSmartGenerate();
-                       }
-                     }}
-                     className="block w-full rounded border-slate-300 shadow-inner focus:border-[#107C41] focus:ring-[#107C41] text-base p-3 min-h-[80px] resize-y bg-white font-sans text-slate-800 placeholder:text-slate-400"
-                     placeholder={code ? "Mevcut kod üzerinde değişiklik yapmak için isteğinizi yazın..." : "Excel'de ne yapmak istiyorsunuz? (Örn: A sütunundaki boşları sil)"}
+                     onChange={handleInputChange}
+                     onKeyDown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if(prompt.trim()) handleSmartGenerate(); }}}
+                     className="block w-full rounded-xl border-slate-200 bg-slate-50/50 focus:bg-white shadow-inner text-[15px] p-4 min-h-[100px] resize-y font-sans text-slate-800 placeholder:text-slate-400 focus:border-[#007AFF] focus:ring-0 transition-all outline-none"
+                     placeholder={code ? "Mevcut çözüm üzerinde değişiklik yap..." : "Örn: A sütunundaki boş satırları sil ve B sütununa göre sırala."}
                  />
+
+                 {/* Suggestions Dropdown */}
+                 {suggestions.length > 0 && (
+                   <div className="absolute top-[85%] left-5 right-5 bg-white/95 backdrop-blur-xl border border-slate-200 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-1">
+                      {suggestions.map((suggestion, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => applySuggestion(suggestion)}
+                          className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-[#007AFF] hover:text-white rounded-lg transition-colors flex items-center gap-2"
+                        >
+                           <Zap className="w-3 h-3 opacity-50" />
+                           {suggestion}
+                        </button>
+                      ))}
+                   </div>
+                 )}
                  
-                 <div className="mt-3 flex justify-between items-center">
+                 <div className="mt-4 flex justify-between items-center">
                     <div className="flex gap-2">
-                       {/* Mock Format Buttons */}
-                       <div className="hidden sm:flex items-center gap-0.5 p-1 bg-slate-100 rounded text-slate-500">
-                          <span className="p-1 hover:bg-white rounded cursor-pointer"><FunctionSquare className="w-3.5 h-3.5" /></span>
+                       {/* Formatting Tools (Mock) */}
+                       <div className="hidden sm:flex items-center gap-1 p-1 bg-slate-100/80 rounded-lg text-slate-500">
+                          <span className="w-7 h-7 flex items-center justify-center hover:bg-white rounded cursor-pointer transition-colors"><FunctionSquare className="w-4 h-4" /></span>
                           <span className="w-px h-3 bg-slate-300 mx-1"></span>
-                          <span className="p-1 hover:bg-white rounded cursor-pointer font-bold text-xs">B</span>
-                          <span className="p-1 hover:bg-white rounded cursor-pointer italic text-xs">I</span>
+                          <span className="w-7 h-7 flex items-center justify-center hover:bg-white rounded cursor-pointer font-bold text-xs">B</span>
                        </div>
                     </div>
 
                     <button
                        onClick={() => handleSmartGenerate()}
                        disabled={loading || !prompt.trim()}
-                       className={`ml-auto flex items-center gap-2 px-5 py-2 rounded shadow-sm text-sm font-medium text-white transition-all hover:shadow-md disabled:opacity-70 disabled:cursor-not-allowed ${
-                         code ? 'bg-[#107C41] hover:bg-[#0E6A37]' : 'bg-[#107C41] hover:bg-[#0E6A37]'
-                       }`}
+                       className={`
+                         flex items-center gap-2 px-6 py-2.5 rounded-xl shadow-lg shadow-[#007AFF]/20 text-sm font-semibold text-white transition-all active:scale-95
+                         ${loading || !prompt.trim() ? 'bg-slate-300 cursor-not-allowed shadow-none' : 'bg-[#007AFF] hover:bg-[#0062CC] hover:shadow-[#007AFF]/30'}
+                       `}
                    >
                        {loading ? (
                            <>
                               <div className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></div>
-                              {code ? "İşleniyor..." : "Çalıştır"}
+                              <span>Düşünüyor...</span>
                            </>
                        ) : (
                            <>
                               {code ? <RefreshCw className="w-4 h-4" /> : <Wand2 className="w-4 h-4" />}
-                              {code ? "Güncelle" : "Oluştur"}
+                              <span>{code ? "Güncelle" : "Oluştur"}</span>
                            </>
                        )}
                    </button>
                  </div>
-              </div>
            </div>
         </div>
 
-        {/* 2. INITIAL STATE (If no code is generated yet) */}
-        {!code && !loading && (
-          <div className="flex flex-col items-center justify-center py-10 text-center opacity-70">
-             <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-                <Sparkles className="w-8 h-8 text-slate-400" />
-             </div>
-             <h3 className="text-slate-600 font-semibold text-lg">Otomasyon Merkezi</h3>
-             <p className="text-slate-400 text-sm max-w-md mt-2">
-                Yukarıdaki kutuya isteğinizi yazın veya şablonlar sekmesinden hazır bir senaryo seçin.
-             </p>
-          </div>
-        )}
-
-        {/* 3. OUTPUT AREA */}
-        {(code || loading) && (
-            <div 
-                ref={codeSectionRef}
-                className="animate-in fade-in slide-in-from-bottom-4 duration-500"
-            >
-                {/* FORMULA VIEW - MIMIC EXCEL FORMULA BAR */}
-                {!loading && solutionType === 'FORMULA' && (
-                    <div className="bg-white rounded-lg shadow-md border border-slate-300 overflow-hidden">
-                        {/* Title Bar */}
-                        <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-                             <div className="flex items-center gap-2">
-                                <div className="font-serif italic font-bold text-slate-400 text-lg">fx</div>
-                                <h2 className="text-sm font-bold text-slate-700">{solutionTitle || "Fonksiyon"}</h2>
-                             </div>
-                             <button 
-                                onClick={copyToClipboard}
-                                className="flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-300 text-slate-600 rounded hover:bg-slate-50 transition-colors text-xs font-medium shadow-sm"
-                             >
-                                {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                                {copied ? 'Kopyalandı' : 'Kopyala'}
-                             </button>
+        {/* 2. OUTPUT CARD (Animated Reveal) */}
+        <div 
+            className={`transition-all duration-700 ease-[cubic-bezier(0.25,1,0.5,1)] ${
+                showOutput ? 'max-h-[2500px] opacity-100 translate-y-0' : 'max-h-0 opacity-0 -translate-y-8'
+            }`}
+        >
+            <div ref={codeSectionRef} className="pt-2 pb-10"> 
+                
+                {/* SUGGESTION / NONSENSE FALLBACK */}
+                {!loading && solutionType === 'SUGGESTION' && (
+                    <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-8 text-center animate-in fade-in slide-in-from-bottom-4">
+                        <div className="w-16 h-16 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Lightbulb className="w-8 h-8" />
                         </div>
+                        <h3 className="text-xl font-bold text-slate-800 mb-2">Tam anlayamadım 🤔</h3>
+                        <p className="text-slate-600 mb-6">{solutionExplanation || "Excel ile ilgili bir işlem yapmanıza yardımcı olabilirim. Belki şunları denemek istersiniz:"}</p>
                         
-                        <div className="p-6 bg-white">
-                             {/* Instruction Box */}
-                             <div className="mb-6 flex items-start gap-3 text-slate-600 text-sm">
-                                <div className="mt-0.5"><Info className="w-4 h-4 text-blue-500" /></div>
-                                <p>Hücreye yapıştırın ve <kbd className="font-mono bg-slate-100 border border-slate-300 px-1 rounded text-xs text-slate-500">Enter</kbd> tuşuna basın.</p>
-                             </div>
-
-                             {/* Formula Bar Lookalike */}
-                             <div className="relative group">
-                                <div className="flex items-center border border-slate-300 rounded shadow-sm overflow-hidden">
-                                   <div className="bg-slate-50 px-3 py-3 border-r border-slate-200 text-slate-400">
-                                      <Sigma className="w-4 h-4" />
-                                   </div>
-                                   <pre className="flex-1 bg-white text-slate-800 p-3 font-mono text-base overflow-x-auto whitespace-pre-wrap selection:bg-emerald-200">
-                                       {code}
-                                   </pre>
-                                </div>
-                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 text-xs px-2 py-1">
-                                    Tıkla & Kopyala
-                                </div>
-                             </div>
-
-                             <div className="mt-6 p-4 bg-emerald-50 rounded border border-emerald-100 flex gap-3">
-                                <Lightbulb className="w-5 h-5 text-emerald-600 shrink-0" />
-                                <div>
-                                    <h4 className="font-bold text-emerald-800 text-sm mb-1">Açıklama</h4>
-                                    <p className="text-xs text-emerald-700 leading-relaxed">
-                                        {solutionExplanation}
-                                    </p>
-                                </div>
-                             </div>
-
-                             <div className="mt-6 pt-4 border-t border-slate-100 flex justify-center">
-                                 <button 
-                                    onClick={handleForceVBA}
-                                    className="text-xs text-slate-400 hover:text-slate-600 underline flex items-center gap-1 transition-colors"
-                                 >
-                                     <FileCode className="w-3 h-3" />
-                                     Bunu Makro (VBA) olarak ver
-                                 </button>
-                             </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl mx-auto">
+                            {code.split(',').map((sug, idx) => (
+                                <button 
+                                    key={idx}
+                                    onClick={() => handleSmartGenerate(sug.trim())}
+                                    className="p-4 bg-slate-50 hover:bg-[#007AFF] hover:text-white border border-slate-100 rounded-xl transition-all text-sm font-medium text-left flex items-center gap-2 group"
+                                >
+                                    <div className="w-2 h-2 rounded-full bg-slate-300 group-hover:bg-white"></div>
+                                    {sug.trim()}
+                                </button>
+                            ))}
                         </div>
                     </div>
                 )}
 
-                {/* VBA VIEW - MIMIC VBA EDITOR */}
-                {(loading || solutionType === 'VBA') && (
-                    <div className="bg-white rounded shadow-md border border-slate-300 flex flex-col overflow-hidden">
-                        {/* Toolbar - VBE Style */}
-                        <div className="flex flex-wrap justify-between items-center px-2 py-1 bg-slate-100 border-b border-slate-300 gap-2 min-h-[40px]">
-                            <div className="flex items-center gap-2 px-2">
-                               <FileCode className="w-4 h-4 text-blue-700" />
-                               <span className="text-xs font-semibold text-slate-600">Module1 (Code)</span>
+                {/* MAIN OUTPUT (Formula or VBA) */}
+                {(solutionType === 'FORMULA' || solutionType === 'VBA' || loading) && (
+                <div className="bg-white rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.06)] border border-slate-200/60 overflow-hidden flex flex-col ring-1 ring-slate-900/5">
+                    
+                    {/* Header & Tabs */}
+                    <div className="flex items-center justify-between px-6 py-4 bg-slate-50/50 border-b border-slate-100">
+                        <h2 className="text-base font-bold text-slate-800 flex items-center gap-2.5">
+                            <div className={`p-1.5 rounded-lg ${solutionType === 'FORMULA' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+                                {solutionType === 'FORMULA' ? <Sigma className="w-4 h-4" /> : <FileCode className="w-4 h-4" />}
                             </div>
-                            <div className="flex gap-1">
-                            <button 
-                                onClick={copyToClipboard}
-                                disabled={loading}
-                                className="text-xs bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-700 px-3 py-1 rounded-sm flex items-center gap-1.5 transition-colors"
-                            >
-                                {copied ? <Check className="w-3.5 h-3.5 text-green-700" /> : <Copy className="w-3.5 h-3.5" />}
-                                {copied ? 'Kopyalandı' : 'Kopyala'}
-                            </button>
-                            <button 
-                                onClick={downloadBasFile}
-                                disabled={loading}
-                                className="text-xs bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-700 px-3 py-1 rounded-sm flex items-center gap-1.5 transition-colors"
-                            >
-                                <Download className="w-3.5 h-3.5" />
-                                .bas İndir
-                            </button>
-                            </div>
-                        </div>
+                            {solutionTitle || "Çözüm"}
+                        </h2>
 
-                        {/* Validation Warnings */}
-                        {validationErrors.length > 0 && (
-                        <div className="bg-amber-50 border-b border-amber-200 p-3 animate-in slide-in-from-top-2">
-                            <div className="flex items-start gap-2">
-                            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                            <div>
-                                <h4 className="text-xs font-bold text-amber-800 mb-1">Uyarılar</h4>
-                                <ul className="list-disc list-inside text-xs text-amber-700 space-y-0.5">
-                                {validationErrors.map((err, i) => <li key={i}>{err}</li>)}
-                                </ul>
-                            </div>
-                            </div>
-                        </div>
-                        )}
-                        
-                        {/* INSTRUCTION BOX FOR VBA */}
-                        {!loading && (
-                            <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-start gap-3">
-                                <MousePointerClick className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
-                                <div className="text-xs text-slate-600 space-y-0.5">
-                                    <span className="font-bold text-slate-700">Kurulum: </span>
-                                    <span>Excel'de <kbd className="font-mono bg-white border border-slate-300 px-1 rounded">Alt + F11</kbd> ile editörü açın, <span className="font-semibold">Insert &gt; Module</span> diyerek yapıştırın ve <kbd className="font-mono bg-white border border-slate-300 px-1 rounded">F5</kbd> ile çalıştırın.</span>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Code Viewer Display */}
-                        <div className="relative bg-white min-h-[300px] max-h-[800px] overflow-auto custom-scrollbar group border-t border-slate-200">
-                            {loading ? (
-                            <div className="flex flex-col items-center justify-center h-[300px] space-y-4">
-                                <div className="w-10 h-10 border-4 border-[#107C41]/30 border-t-[#107C41] rounded-full animate-spin"></div>
-                                <p className="text-[#107C41] font-sans text-sm animate-pulse font-medium">Kod oluşturuluyor...</p>
-                            </div>
-                            ) : (
-                            <>
-                                <div className="p-4">
-                                    <VbaCodeViewer code={code} />
-                                </div>
-                            </>
-                            )}
+                        <div className="w-48">
+                            <SegmentedControl 
+                                options={[{ id: 'FORMULA', label: 'Formül' }, { id: 'VBA', label: 'Makro' }]}
+                                selected={solutionType || 'VBA'}
+                                onChange={(val) => val === 'FORMULA' ? handleSwitchToFormula() : handleSwitchToVBA()}
+                                disabled={loading || (solutionType === 'VBA' && !cachedFormula)}
+                            />
                         </div>
                     </div>
+
+                    {/* Content Area */}
+                    <div className="bg-white p-0 min-h-[200px] relative">
+                        
+                        {/* FORMULA DISPLAY */}
+                        {!loading && solutionType === 'FORMULA' && (
+                            <div className="p-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                                
+                                {/* New Beginner Instructions */}
+                                <FormulaInstructions />
+                                
+                                <div className="group relative mb-8">
+                                    <div className="flex items-center bg-slate-50 rounded-xl border border-slate-200 shadow-inner overflow-hidden">
+                                        <div className="px-4 py-4 text-slate-400 border-r border-slate-200 font-serif italic">fx</div>
+                                        <pre className="flex-1 p-4 font-mono text-[15px] text-slate-900 overflow-x-auto whitespace-pre-wrap">{code}</pre>
+                                    </div>
+                                    <button 
+                                        onClick={copyToClipboard}
+                                        className="absolute top-2 right-2 bg-white/90 shadow-sm border border-slate-200 text-slate-500 hover:text-emerald-600 p-2 rounded-lg transition-colors"
+                                    >
+                                        {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                                    </button>
+                                </div>
+
+                                <div className="p-5 bg-slate-50/80 rounded-xl border border-slate-100">
+                                    <h4 className="font-bold text-slate-800 text-sm mb-2 flex items-center gap-2">
+                                        <Lightbulb className="w-4 h-4 text-amber-500" />
+                                        Nasıl Çalışır?
+                                    </h4>
+                                    <p className="text-sm text-slate-600 leading-relaxed">{solutionExplanation}</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* VBA DISPLAY */}
+                        {(loading || solutionType === 'VBA') && (
+                            <div className="flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-500">
+                                
+                                {/* New Beginner Instructions (Only show when not loading) */}
+                                {!loading && (
+                                    <div className="px-6 pt-6">
+                                        <VbaInstructions />
+                                    </div>
+                                )}
+
+                                {/* Toolbar */}
+                                <div className="flex justify-between items-center px-4 py-2 bg-[#f9fafb] border-b border-t border-slate-100 text-xs mt-2">
+                                    <span className="font-mono text-slate-500 px-2">Module1.bas</span>
+                                    <div className="flex gap-2">
+                                        <button onClick={copyToClipboard} disabled={loading} className="px-3 py-1.5 bg-white border border-slate-200 rounded-md text-slate-600 hover:text-blue-600 hover:border-blue-200 shadow-sm transition-all flex items-center gap-1.5">
+                                            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                                            {copied ? 'Kopyalandı' : 'Kopyala'}
+                                        </button>
+                                        <button onClick={downloadBasFile} disabled={loading} className="px-3 py-1.5 bg-white border border-slate-200 rounded-md text-slate-600 hover:text-blue-600 hover:border-blue-200 shadow-sm transition-all flex items-center gap-1.5">
+                                            <Download className="w-3.5 h-3.5" />
+                                            İndir
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Warnings */}
+                                {validationErrors.length > 0 && (
+                                    <div className="bg-amber-50/50 border-b border-amber-100 p-3 px-6 flex gap-3 text-xs text-amber-800">
+                                        <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
+                                        <ul className="list-disc list-inside space-y-0.5 opacity-80">
+                                            {validationErrors.map((err, i) => <li key={i}>{err}</li>)}
+                                        </ul>
+                                    </div>
+                                )}
+                                
+                                <div className="relative min-h-[300px] max-h-[800px] overflow-auto">
+                                    {loading ? (
+                                        <div className="flex flex-col items-center justify-center h-[300px] space-y-6">
+                                            <div className="relative">
+                                                <div className="w-12 h-12 border-4 border-slate-100 rounded-full"></div>
+                                                <div className="absolute top-0 left-0 w-12 h-12 border-4 border-[#007AFF] border-t-transparent rounded-full animate-spin"></div>
+                                            </div>
+                                            <p className="text-slate-400 font-medium text-sm animate-pulse">Yapay zeka çözümü kodluyor...</p>
+                                        </div>
+                                    ) : (
+                                        <VbaCodeViewer code={code} />
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
                 )}
+
             </div>
-        )}
+        </div>
 
       </div>
     </div>
