@@ -10,7 +10,6 @@ interface TemplatesViewProps {
   onSelectTemplate: (prompt: string) => void;
 }
 
-// Reusing the data structure but formatted for a full page view
 const TEMPLATE_CATEGORIES = [
   {
     title: "Veri Temizleme",
