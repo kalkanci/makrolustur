@@ -3,11 +3,7 @@ import HomeView from './components/HomeView';
 import SettingsModal from './components/SettingsModal';
 import { Grid3X3, Plus, Settings } from 'lucide-react';
 import { AppSettings } from './services/geminiService';
-
-const DEFAULT_SETTINGS: AppSettings = {
-  excelVersion: '365',
-  language: 'TR'
-};
+import { DEFAULT_SETTINGS } from './services/constants';
 
 const App: React.FC = () => {
   // State to pass prompt to the generator
@@ -17,9 +13,14 @@ const App: React.FC = () => {
   
   // Settings State
   const [settings, setSettings] = useState<AppSettings>(() => {
-    const saved = localStorage.getItem('xlsm_settings');
-    return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+    try {
+      const saved = localStorage.getItem('xlsm_settings');
+      return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+    } catch {
+      return DEFAULT_SETTINGS;
+    }
   });
+  
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Save settings when changed

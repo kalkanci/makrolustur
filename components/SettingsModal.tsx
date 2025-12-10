@@ -9,10 +9,16 @@ interface SettingsModalProps {
   onSave: (newSettings: AppSettings) => void;
 }
 
+const VERSIONS = ['365', '2021', '2019', '2016', '2013', '2010'];
+const LANGUAGES = [
+  { code: 'TR', label: 'Türkçe', desc: 'Örn: EĞER, DÜŞEYARA', colorClass: 'emerald' },
+  { code: 'EN', label: 'İngilizce', desc: 'Ex: IF, VLOOKUP', colorClass: 'blue' }
+] as const;
+
 const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings, onSave }) => {
   if (!isOpen) return null;
 
-  const updateSetting = (key: keyof AppSettings, value: any) => {
+  const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     onSave({ ...settings, [key]: value });
   };
 
@@ -48,7 +54,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                Excel Versiyonu
             </label>
             <div className="grid grid-cols-2 gap-2">
-               {['365', '2021', '2019', '2016', '2013', '2010'].map((ver) => (
+               {VERSIONS.map((ver) => (
                   <button
                     key={ver}
                     onClick={() => updateSetting('excelVersion', ver)}
@@ -78,35 +84,33 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                Formül Dili
             </label>
             <div className="flex gap-3">
-               <button
-                  onClick={() => updateSetting('language', 'TR')}
-                  className={`flex-1 p-3 rounded-xl border text-left transition-all ${
-                    settings.language === 'TR'
+               {LANGUAGES.map((lang) => {
+                 const isSelected = settings.language === lang.code;
+                 const baseColor = lang.colorClass; 
+                 // Note: Dynamic template literals for Tailwind classes like `bg-${color}-50` are risky if not safelisted.
+                 // We stick to manual class logic here for safety or use full strings.
+                 const activeClasses = baseColor === 'emerald' 
                     ? 'bg-emerald-50 border-emerald-200 ring-1 ring-emerald-500/20' 
-                    : 'bg-white border-slate-200 hover:border-slate-300'
-                  }`}
-               >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className={`font-bold ${settings.language === 'TR' ? 'text-emerald-700':'text-slate-700'}`}>Türkçe</span>
-                    {settings.language === 'TR' && <Check className="w-4 h-4 text-emerald-600" />}
-                  </div>
-                  <div className="text-xs text-slate-500">Örn: EĞER, DÜŞEYARA</div>
-               </button>
+                    : 'bg-blue-50 border-blue-200 ring-1 ring-blue-500/20';
+                 const textActive = baseColor === 'emerald' ? 'text-emerald-700' : 'text-blue-700';
+                 const checkColor = baseColor === 'emerald' ? 'text-emerald-600' : 'text-blue-600';
 
-               <button
-                  onClick={() => updateSetting('language', 'EN')}
-                  className={`flex-1 p-3 rounded-xl border text-left transition-all ${
-                    settings.language === 'EN'
-                    ? 'bg-blue-50 border-blue-200 ring-1 ring-blue-500/20' 
-                    : 'bg-white border-slate-200 hover:border-slate-300'
-                  }`}
-               >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className={`font-bold ${settings.language === 'EN' ? 'text-blue-700':'text-slate-700'}`}>İngilizce</span>
-                    {settings.language === 'EN' && <Check className="w-4 h-4 text-blue-600" />}
-                  </div>
-                  <div className="text-xs text-slate-500">Ex: IF, VLOOKUP</div>
-               </button>
+                 return (
+                   <button
+                      key={lang.code}
+                      onClick={() => updateSetting('language', lang.code)}
+                      className={`flex-1 p-3 rounded-xl border text-left transition-all ${
+                        isSelected ? activeClasses : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                   >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={`font-bold ${isSelected ? textActive : 'text-slate-700'}`}>{lang.label}</span>
+                        {isSelected && <Check className={`w-4 h-4 ${checkColor}`} />}
+                      </div>
+                      <div className="text-xs text-slate-500">{lang.desc}</div>
+                   </button>
+                 );
+               })}
             </div>
           </div>
 

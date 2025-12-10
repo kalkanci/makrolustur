@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
-// Declare process to satisfy TypeScript, though it's handled by Vite define
+// Declare process to satisfy TypeScript for Vite environment
 declare const process: {
   env: {
     API_KEY: string;
@@ -13,42 +13,46 @@ export interface AppSettings {
   language: 'TR' | 'EN';
 }
 
-/**
- * Interface for the smart solution response
- */
 export interface SmartSolution {
   type: 'FORMULA' | 'VBA' | 'SUGGESTION';
   title: string;
-  content: string; // The code, formula, or list of suggestions
-  explanation: string; // Brief explanation or steps
-  vbaFallbackPrompt?: string; // If it's a formula, what prompt to use if user forces VBA
+  content: string;
+  explanation: string;
+  vbaFallbackPrompt?: string;
 }
+
+// --- HELPER FUNCTIONS ---
+
+const getAIClient = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+const getSafeString = (val: any) => (val ? String(val).trim() : "");
+
+// --- CORE SERVICES ---
 
 /**
  * Analyzes the user request and generates either an Excel Formula or VBA Code.
- * Returns a structured JSON object.
  */
 export const generateSmartExcelSolution = async (userPrompt: string, settings: AppSettings): Promise<SmartSolution> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = getAIClient();
 
     const langInstruction = settings.language === 'TR' 
       ? "Excel Formüllerini TÜRKÇE yaz (Örn: EĞER, DÜŞEYARA, TOPLA)." 
       : "Excel Formüllerini İNGİLİZCE (International) yaz (Örn: IF, VLOOKUP, SUM).";
 
-    const versionInstruction = `Kullanıcı Excel ${settings.excelVersion} versiyonunu kullanıyor. Bu versiyonda olmayan fonksiyonları (Örn: Excel 2019 öncesiyse 'ÇAPRAZARA/XLOOKUP', 'METİNBİRLEŞTİR/TEXTJOIN' vb.) ASLA kullanma. Daha eski ve uyumlu alternatifler kullan.`;
+    const versionInstruction = `Kullanıcı Excel ${settings.excelVersion} versiyonunu kullanıyor. Bu versiyonda olmayan fonksiyonları ASLA kullanma.`;
 
     const systemPrompt = `
       Sen dünyanın en iyi Excel uzmanısın. Kullanıcının isteğini analiz et.
       
-      KULLANICI AYARLARI (ÇOK ÖNEMLİ):
+      KULLANICI AYARLARI:
       1. ${langInstruction}
       2. ${versionInstruction}
 
-      KARAR MEKANİZMASI (ÖNCELİK SIRASI):
-      1. ANLAMSIZ/ALAKASIZ GİRDİ: Eğer girdi Excel ile alakasızsa (örn: "selam", "hava durumu", "nasılsın") veya rastgele harflerse, type olarak 'SUGGESTION' döndür.
-      2. FORMÜL (Yüksek Öncelik): Eğer istek standart Excel formülleriyle çözülebiliyorsa 'FORMULA' seç. VBA kullanma.
-      3. VBA: Sadece formülle yapılması imkansızsa veya kullanıcı "makro" istediyse 'VBA' seç.
+      KARAR MEKANİZMASI:
+      1. ANLAMSIZ GİRDİ: type='SUGGESTION' döndür.
+      2. FORMÜL: Standart formüllerle çözülüyorsa 'FORMULA' seç.
+      3. VBA: Formülle imkansızsa veya "makro" isteniyorsa 'VBA' seç.
       
       ÇIKTI FORMATI (JSON):
       {
@@ -58,11 +62,6 @@ export const generateSmartExcelSolution = async (userPrompt: string, settings: A
         "explanation": "Açıklama",
         "vbaFallbackPrompt": "Formula ise VBA için prompt"
       }
-
-      DETAYLAR:
-      - Type 'SUGGESTION' ise: 'content' alanına virgülle ayrılmış 3-4 öneri yaz.
-      - Type 'FORMULA' ise: Ayarlara uygun dilde formül yaz. Ayıraç olarak noktalı virgül (;) kullan.
-      - Type 'VBA' ise: Çok sağlam hata yönetimi (Error Handling) içeren tam Sub prosedürü yaz. "On Error Resume Next" kullanma (zorunlu haller dışında). Kod sonunda ayarları (ScreenUpdating vb.) mutlaka geri yükle.
       
       Kullanıcı İsteği: "${userPrompt}"
     `;
@@ -70,195 +69,114 @@ export const generateSmartExcelSolution = async (userPrompt: string, settings: A
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: systemPrompt,
-      config: {
-        responseMimeType: "application/json"
-      }
+      config: { responseMimeType: "application/json" }
     });
 
-    const text = response.text || "{}";
-    const jsonResponse = JSON.parse(text) as SmartSolution;
-    
-    return jsonResponse;
+    return JSON.parse(response.text || "{}") as SmartSolution;
 
   } catch (error) {
-    console.error("Akıllı çözüm üretilemedi:", error);
-    // Fallback to VBA generation logic if JSON fails
+    console.warn("Smart generation failed, falling back to VBA:", error);
     return {
       type: 'VBA',
       title: 'Otomatik Makro',
       content: await generateExcelMacro(userPrompt, settings),
-      explanation: 'İsteğiniz üzerine oluşturulan VBA makrosu.'
+      explanation: 'İsteğiniz üzerine oluşturulan VBA makrosu (Fallback).'
     };
   }
 };
 
 /**
- * Generates VBA code based on a user's natural language request.
+ * Generates VBA code with robust error handling.
  */
 export const generateExcelMacro = async (userPrompt: string, settings: AppSettings, previousCode?: string): Promise<string> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = getAIClient();
     
-    const versionNote = `Kullanıcı Excel ${settings.excelVersion} kullanıyor. Kodun bu versiyonla tam uyumlu olduğundan emin ol.`;
-
-    const errorHandlingInstructions = `
-      GELİŞMİŞ HATA YÖNETİMİ KURALLARI (ZORUNLU):
-      1. "On Error Resume Next" kullanımından KAÇIN. Sadece nesne kontrolü gibi çok spesifik yerlerde kullan ve hemen ardından "On Error GoTo 0" ile kapat.
-      2. Kodun yapısı ŞU ŞEKİLDE OLMALIDIR:
-         Sub MakroIsmi()
-            Dim ...
-            Dim IslemAdimi As String ' Hatanın nerede olduğunu anlamak için
-            IslemAdimi = "Başlangıç"
-            
-            On Error GoTo ErrorHandler
-            
-            ' Hızlandırma
-            Application.ScreenUpdating = False
-            Application.Calculation = xlCalculationManual
-            Application.DisplayAlerts = False
-            
-            IslemAdimi = "Veriler Hazırlanıyor"
-            ' ... Kodlar ...
-            
-         SafeExit:
-            ' Ayarları Geri Yükle (Hata olsa bile burası çalışmalı)
-            Application.ScreenUpdating = True
-            Application.Calculation = xlCalculationAutomatic
-            Application.DisplayAlerts = True
-            Exit Sub
-            
-         ErrorHandler:
-            MsgBox "Bir hata oluştu!" & vbCrLf & _
-                   "İşlem Adımı: " & IslemAdimi & vbCrLf & _
-                   "Hata Kodu: " & Err.Number & vbCrLf & _
-                   "Açıklama: " & Err.Description, vbCritical, "Hata Raporu"
-            Resume SafeExit
-         End Sub
-
-      3. Değişken isimlerini anlamlı ver (wsSource, lastRow vb.).
-      4. Kod içindeki yorum satırlarını TÜRKÇE yaz.
-      5. ${versionNote}
+    const errorHandlingRules = `
+      GELİŞMİŞ HATA YÖNETİMİ KURALLARI:
+      1. "On Error Resume Next" sadece zorunlu hallerde (nesne kontrolü vb.) kullan ve hemen kapat.
+      2. Standart ErrorHandler yapısını kullan (IslemAdimi takibi, SafeExit bloğu).
+      3. ScreenUpdating, Calculation, DisplayAlerts ayarlarını yönet ve SafeExit'te geri yükle.
+      4. Değişkenler anlamlı olsun, yorumlar Türkçe olsun.
+      5. Excel ${settings.excelVersion} uyumlu olsun.
     `;
 
-    let systemPrompt = "";
-
-    if (previousCode) {
-      systemPrompt = `
-        GÖREV: Mevcut VBA kodunu güncelle.
-        MEVCUT KOD: ${previousCode}
-        İSTEK: "${userPrompt}"
-        KURALLAR: ${errorHandlingInstructions}
-        Sadece kodu döndür.
-      `;
-    } else {
-      systemPrompt = `
-        Sen Excel VBA uzmanısın.
-        Kullanıcı İsteği: "${userPrompt}"
-        KURALLAR: 
-        - SADECE VBA kodunu döndür. Markdown yok.
-        - ${errorHandlingInstructions}
-      `;
-    }
+    const systemPrompt = previousCode 
+      ? `GÖREV: Mevcut VBA kodunu güncelle.\nMEVCUT KOD: ${previousCode}\nİSTEK: "${userPrompt}"\nKURALLAR: ${errorHandlingRules}\nSadece kodu döndür.`
+      : `Sen Excel VBA uzmanısın.\nİSTEK: "${userPrompt}"\nKURALLAR:\n- SADECE VBA kodunu döndür.\n- ${errorHandlingRules}`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: systemPrompt,
     });
 
-    let code = response.text || "";
-    code = code.replace(/```vba/g, '').replace(/```/g, '').trim();
-    
-    return code;
+    return (response.text || "").replace(/```vba/g, '').replace(/```/g, '').trim();
+
   } catch (error) {
-    console.error("VBA oluşturulamadı:", error);
-    throw new Error("VBA kodu oluşturulamadı.");
+    console.error("VBA generation error:", error);
+    throw new Error("VBA kodu oluşturulamadı. Lütfen tekrar deneyin.");
   }
 };
 
 /**
- * Fetches the local weather based on internet location using Google Search.
+ * Fetches the local weather via Google Search grounding.
  */
 export const getLocalWeather = async (): Promise<{ temp: string; condition: string; location: string }> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-    // We rely on Google Search to infer the location from the IP/Request
+    const ai = getAIClient();
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: "What is the current weather? Return a string in this EXACT format: 'Location|Temperature(with unit)|Condition'. Example: 'Istanbul|15°C|Cloudy'. Do not add any other text.",
-      config: {
-        tools: [{ googleSearch: {} }],
-      },
+      contents: "Current weather? Format: 'Location|Temperature(with unit)|Condition'. Example: 'Istanbul|15°C|Cloudy'. No other text.",
+      config: { tools: [{ googleSearch: {} }] },
     });
 
-    const text = response.text || "";
-    const parts = text.split('|');
-    
+    const parts = getSafeString(response.text).split('|');
     if (parts.length >= 3) {
-        return {
-            location: parts[0].trim(),
-            temp: parts[1].trim(),
-            condition: parts[2].trim()
-        };
+      return { location: parts[0].trim(), temp: parts[1].trim(), condition: parts[2].trim() };
     }
-
-    // Fallback parsing if format is slightly off
+    
+    // Fallback logic
+    const text = getSafeString(response.text);
     return {
-        location: "Konum",
-        temp: text.match(/(\d+[°C|°F]+)/)?.[0] || "--",
-        condition: text.split(' ')[0] || "Bilinmiyor"
+      location: "Konum",
+      temp: text.match(/(\d+[°C|°F]+)/)?.[0] || "--",
+      condition: text.split(' ')[0] || "Bilinmiyor"
     };
 
   } catch (error) {
-    console.error("Hava durumu alınamadı:", error);
+    console.error("Weather fetch error:", error);
     throw error;
   }
 };
 
 /**
- * Fetches the live USD/TRY exchange rate using Google Search grounding.
+ * Fetches the live USD/TRY exchange rate via Google Search grounding.
  */
 export const getLiveExchangeRate = async (): Promise<{ rate: string; source: string }> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
+    const ai = getAIClient();
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: "What is the current USD to TRY (Turkish Lira) exchange rate? Return a string in this EXACT format: 'RATE|SOURCE'. Example: '32.50|Google Finance'. Just the number for rate. Do not add any other text.",
-      config: {
-        tools: [{ googleSearch: {} }],
-      },
+      contents: "Current USD to TRY rate? Format: 'RATE|SOURCE'. Example: '32.50|Google Finance'. Just number and source.",
+      config: { tools: [{ googleSearch: {} }] },
     });
 
-    const text = response.text || "";
-    const parts = text.split('|');
+    const parts = getSafeString(response.text).split('|');
+    let source = parts[1]?.trim() || "Google Search";
     
-    // Attempt to get source from grounding metadata
-    let source = "Google Search";
+    // Enrich source from grounding metadata if available
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-    if (groundingChunks && groundingChunks.length > 0) {
-        const firstWeb = groundingChunks.find(c => c.web?.title);
-        if (firstWeb?.web?.title) {
-            source = firstWeb.web.title;
-        }
+    if (groundingChunks?.[0]?.web?.title) {
+      source = groundingChunks[0].web.title;
     }
 
-    if (parts.length >= 2) {
-        return {
-            rate: parts[0].trim(),
-            source: parts[1].trim() || source
-        };
-    }
-
-    // Fallback parsing
-    const rateMatch = text.match(/(\d+[.,]\d+)/);
     return {
-        rate: rateMatch ? rateMatch[0] : "---",
-        source: source
+      rate: parts[0]?.trim() || response.text.match(/(\d+[.,]\d+)/)?.[0] || "---",
+      source
     };
 
   } catch (error) {
-    console.error("Kur bilgisi alınamadı:", error);
+    console.error("Exchange rate error:", error);
     throw error;
   }
 };
