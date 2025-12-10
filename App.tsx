@@ -106,7 +106,7 @@ const App: React.FC = () => {
                     <span className="text-xs font-semibold">AI XLSM Studio</span>
                 </div>
                 <p className="text-[10px] text-slate-400">
-                    &copy; 2024 Designed with Gemini.
+                    &copy; 2025 Designed Gemini and Cem Kalkancı
                 </p>
             </footer>
 

@@ -27,6 +27,13 @@ const getAIClient = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const getSafeString = (val: any) => (val ? String(val).trim() : "");
 
+/**
+ * Cleans potential Markdown wrapping from JSON strings.
+ */
+const cleanJsonString = (str: string): string => {
+  return str.replace(/```json/g, '').replace(/```/g, '').trim();
+};
+
 // --- CORE SERVICES ---
 
 /**
@@ -49,12 +56,12 @@ export const generateSmartExcelSolution = async (userPrompt: string, settings: A
       1. ${langInstruction}
       2. ${versionInstruction}
 
-      KARAR MEKANİZMASI:
-      1. ANLAMSIZ GİRDİ: type='SUGGESTION' döndür.
-      2. FORMÜL: Standart formüllerle çözülüyorsa 'FORMULA' seç.
-      3. VBA: Formülle imkansızsa veya "makro" isteniyorsa 'VBA' seç.
+      KARAR MEKANİZMASI (ÖNCELİK SIRASI):
+      1. ANLAMSIZ GİRDİ: Eğer Excel ile alakasızsa type='SUGGESTION' döndür.
+      2. FORMÜL (ZORUNLU ÖNCELİK): Eğer istek formülle çözülebiliyorsa KESİNLİKLE 'FORMULA' seç. Asla tembellik yapıp VBA seçme. Sadece formülün yetersiz kaldığı (döngü, dosya kaydetme vb.) durumlarda VBA seç.
+      3. VBA: Sadece formülle imkansızsa veya kullanıcı açıkça "makro" istediyse 'VBA' seç.
       
-      ÇIKTI FORMATI (JSON):
+      ÇIKTI FORMATI (SAF JSON):
       {
         "type": "FORMULA" | "VBA" | "SUGGESTION",
         "title": "Kısa başlık",
@@ -63,24 +70,33 @@ export const generateSmartExcelSolution = async (userPrompt: string, settings: A
         "vbaFallbackPrompt": "Formula ise VBA için prompt"
       }
       
+      NOT: Yanıtın sadece JSON olsun. Markdown işareti ekleme.
+      
       Kullanıcı İsteği: "${userPrompt}"
     `;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: systemPrompt,
-      config: { responseMimeType: "application/json" }
+      config: { 
+        responseMimeType: "application/json",
+        temperature: 0.3 // Lower temperature for more deterministic logic choices
+      }
     });
 
-    return JSON.parse(response.text || "{}") as SmartSolution;
+    const rawText = response.text || "{}";
+    const cleanedText = cleanJsonString(rawText);
+    
+    return JSON.parse(cleanedText) as SmartSolution;
 
   } catch (error) {
     console.warn("Smart generation failed, falling back to VBA:", error);
+    // Only fallback if it's a critical failure, otherwise propagate meaningful error
     return {
       type: 'VBA',
       title: 'Otomatik Makro',
       content: await generateExcelMacro(userPrompt, settings),
-      explanation: 'İsteğiniz üzerine oluşturulan VBA makrosu (Fallback).'
+      explanation: 'Otomatik analiz yapılamadı, güvenlik ağı olarak VBA oluşturuldu.'
     };
   }
 };
@@ -103,14 +119,17 @@ export const generateExcelMacro = async (userPrompt: string, settings: AppSettin
 
     const systemPrompt = previousCode 
       ? `GÖREV: Mevcut VBA kodunu güncelle.\nMEVCUT KOD: ${previousCode}\nİSTEK: "${userPrompt}"\nKURALLAR: ${errorHandlingRules}\nSadece kodu döndür.`
-      : `Sen Excel VBA uzmanısın.\nİSTEK: "${userPrompt}"\nKURALLAR:\n- SADECE VBA kodunu döndür.\n- ${errorHandlingRules}`;
+      : `Sen Excel VBA uzmanısın.\nİSTEK: "${userPrompt}"\nKURALLAR:\n- SADECE VBA kodunu döndür. Markdown yok.\n- ${errorHandlingRules}`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: systemPrompt,
     });
 
-    return (response.text || "").replace(/```vba/g, '').replace(/```/g, '').trim();
+    let code = response.text || "";
+    // Clean markdown manually just in case
+    code = code.replace(/```vba/g, '').replace(/```/g, '').trim();
+    return code;
 
   } catch (error) {
     console.error("VBA generation error:", error);
@@ -130,13 +149,13 @@ export const getLocalWeather = async (): Promise<{ temp: string; condition: stri
       config: { tools: [{ googleSearch: {} }] },
     });
 
-    const parts = getSafeString(response.text).split('|');
+    const text = getSafeString(response.text);
+    const parts = text.split('|');
     if (parts.length >= 3) {
       return { location: parts[0].trim(), temp: parts[1].trim(), condition: parts[2].trim() };
     }
     
     // Fallback logic
-    const text = getSafeString(response.text);
     return {
       location: "Konum",
       temp: text.match(/(\d+[°C|°F]+)/)?.[0] || "--",
@@ -161,7 +180,8 @@ export const getLiveExchangeRate = async (): Promise<{ rate: string; source: str
       config: { tools: [{ googleSearch: {} }] },
     });
 
-    const parts = getSafeString(response.text).split('|');
+    const text = getSafeString(response.text);
+    const parts = text.split('|');
     let source = parts[1]?.trim() || "Google Search";
     
     // Enrich source from grounding metadata if available
@@ -171,7 +191,7 @@ export const getLiveExchangeRate = async (): Promise<{ rate: string; source: str
     }
 
     return {
-      rate: parts[0]?.trim() || response.text.match(/(\d+[.,]\d+)/)?.[0] || "---",
+      rate: parts[0]?.trim() || text.match(/(\d+[.,]\d+)/)?.[0] || "---",
       source
     };
 
