@@ -8,6 +8,11 @@ declare const process: {
   }
 };
 
+export interface AppSettings {
+  excelVersion: string;
+  language: 'TR' | 'EN';
+}
+
 /**
  * Interface for the smart solution response
  */
@@ -23,21 +28,29 @@ export interface SmartSolution {
  * Analyzes the user request and generates either an Excel Formula or VBA Code.
  * Returns a structured JSON object.
  */
-export const generateSmartExcelSolution = async (userPrompt: string): Promise<SmartSolution> => {
+export const generateSmartExcelSolution = async (userPrompt: string, settings: AppSettings): Promise<SmartSolution> => {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+    const langInstruction = settings.language === 'TR' 
+      ? "Excel Formüllerini TÜRKÇE yaz (Örn: EĞER, DÜŞEYARA, TOPLA)." 
+      : "Excel Formüllerini İNGİLİZCE (International) yaz (Örn: IF, VLOOKUP, SUM).";
+
+    const versionInstruction = `Kullanıcı Excel ${settings.excelVersion} versiyonunu kullanıyor. Bu versiyonda olmayan fonksiyonları (Örn: Excel 2019 öncesiyse 'ÇAPRAZARA/XLOOKUP', 'METİNBİRLEŞTİR/TEXTJOIN' vb.) ASLA kullanma. Daha eski ve uyumlu alternatifler kullan.`;
 
     const systemPrompt = `
       Sen dünyanın en iyi Excel uzmanısın. Kullanıcının isteğini analiz et.
       
+      KULLANICI AYARLARI (ÇOK ÖNEMLİ):
+      1. ${langInstruction}
+      2. ${versionInstruction}
+
       KARAR MEKANİZMASI (ÖNCELİK SIRASI):
-      1. ANLAMSIZ/ALAKASIZ GİRDİ: Eğer girdi Excel ile alakasızsa (örn: "selam", "hava durumu", "nasılsın") veya rastgele harflerse (örn: "asdasf"), type olarak 'SUGGESTION' döndür.
-      2. FORMÜL (Yüksek Öncelik): Eğer istek standart Excel formülleriyle (EĞER, DÜŞEYARA, ETOPLA, FİLTRE vb.) çözülebiliyorsa, çözüm türü olarak 'FORMULA' seç. VBA kullanma. Kullanıcı özellikle "makro" demedikçe FORMÜL önceliklidir.
-      3. VBA: Sadece formülle yapılması imkansızsa (hücre boyama, dosya kaydetme, mail atma) veya kullanıcı "makro" istediyse 'VBA' seç.
+      1. ANLAMSIZ/ALAKASIZ GİRDİ: Eğer girdi Excel ile alakasızsa (örn: "selam", "hava durumu", "nasılsın") veya rastgele harflerse, type olarak 'SUGGESTION' döndür.
+      2. FORMÜL (Yüksek Öncelik): Eğer istek standart Excel formülleriyle çözülebiliyorsa 'FORMULA' seç. VBA kullanma.
+      3. VBA: Sadece formülle yapılması imkansızsa veya kullanıcı "makro" istediyse 'VBA' seç.
       
       ÇIKTI FORMATI (JSON):
-      Aşağıdaki JSON şemasına uygun yanıt ver. Markdown kullanma, sadece saf JSON döndür.
-      
       {
         "type": "FORMULA" | "VBA" | "SUGGESTION",
         "title": "Kısa başlık",
@@ -47,9 +60,9 @@ export const generateSmartExcelSolution = async (userPrompt: string): Promise<Sm
       }
 
       DETAYLAR:
-      - Type 'SUGGESTION' ise: 'content' alanına kullanıcının Excel'de yapmak isteyebileceği 3-4 farklı işlemi (örn: "Tabloyu renklendir", "Boşlukları sil") aralarına virül koyarak string olarak yaz. 'explanation' kısmına "Ne yapmak istediğinizi tam anlayamadım, şunları deneyebilirsiniz:" yaz.
-      - Type 'FORMULA' ise: Türkçe Excel formülleri kullan (IF->EĞER, ; ayracı).
-      - Type 'VBA' ise: Hata yönetimi içeren tam Sub prosedürü yaz.
+      - Type 'SUGGESTION' ise: 'content' alanına virgülle ayrılmış 3-4 öneri yaz.
+      - Type 'FORMULA' ise: Ayarlara uygun dilde formül yaz. Ayıraç olarak noktalı virgül (;) kullan.
+      - Type 'VBA' ise: Hata yönetimi içeren tam Sub prosedürü yaz. VBA dili her zaman İngilizcedir (Keywords), ancak yorum satırlarını Türkçe yaz.
       
       Kullanıcı İsteği: "${userPrompt}"
     `;
@@ -73,7 +86,7 @@ export const generateSmartExcelSolution = async (userPrompt: string): Promise<Sm
     return {
       type: 'VBA',
       title: 'Otomatik Makro',
-      content: await generateExcelMacro(userPrompt),
+      content: await generateExcelMacro(userPrompt, settings),
       explanation: 'İsteğiniz üzerine oluşturulan VBA makrosu.'
     };
   }
@@ -81,87 +94,39 @@ export const generateSmartExcelSolution = async (userPrompt: string): Promise<Sm
 
 /**
  * Generates VBA code based on a user's natural language request.
- * Can optionally take previous code and a refinement instruction to edit existing macros.
  */
-export const generateExcelMacro = async (userPrompt: string, previousCode?: string): Promise<string> => {
+export const generateExcelMacro = async (userPrompt: string, settings: AppSettings, previousCode?: string): Promise<string> => {
   try {
-    // Initialize inside function to prevent crash on app load if key is missing
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    let systemPrompt = "";
+    const versionNote = `Kullanıcı Excel ${settings.excelVersion} kullanıyor. Kodun bu versiyonla tam uyumlu olduğundan emin ol.`;
 
     const errorHandlingInstructions = `
-      ZORUNLU KOD YAPISI VE PERFORMANS AYARLARI:
-      1. Kodun EN BAŞINDA (Sub tanımlamasından hemen sonra) performansı artırmak için şu ayarları kapat:
-         Application.ScreenUpdating = False
-         Application.EnableEvents = False
-         Application.Calculation = xlCalculationManual
-      
-      2. Kodun EN SONUNDA (Exit Sub veya End Sub öncesi) bu ayarları MUTLAKA eski haline döndür:
-         Application.ScreenUpdating = True
-         Application.EnableEvents = True
-         Application.Calculation = xlCalculationAutomatic
-
-      3. Hata Yönetimi (Error Handling):
-         - Kodun başında "On Error GoTo ErrorHandler" kullan.
-         - Kodun sonunda, "ErrorHandler:" etiketinden önce "Exit Sub" ekle.
-         - "ErrorHandler:" bloğunda, yukarıdaki Application ayarlarını (ScreenUpdating vb.) tekrar True/Automatic yap (böylece hata olsa bile Excel kilitli kalmaz) ve MsgBox ile hatayı göster.
-      
-      4. Kod Yapısı Örneği:
-         Sub OrnekMakro()
-             On Error GoTo ErrorHandler
-             Application.ScreenUpdating = False
-             Application.EnableEvents = False
-             Application.Calculation = xlCalculationManual
-             
-             ' ... KODLAR BURAYA ...
-             
-         SafeExit:
-             Application.ScreenUpdating = True
-             Application.EnableEvents = True
-             Application.Calculation = xlCalculationAutomatic
-             Exit Sub
-             
-         ErrorHandler:
-             MsgBox "Bir hata oluştu: " & Err.Description, vbCritical, "Hata"
-             Resume SafeExit
-         End Sub
-
-      5. Okunabilirlik:
-         - Her işlem adımı için Türkçe yorum satırları (') ekle.
+      ZORUNLU KOD YAPISI:
+      1. Performans ayarlarını (ScreenUpdating vb.) kapatıp aç.
+      2. "On Error GoTo ErrorHandler" kullan.
+      3. Değişken tanımlamalarını (Dim) eksiksiz yap.
+      4. ${versionNote}
+      5. Kod içindeki yorum satırları TÜRKÇE olsun.
     `;
 
+    let systemPrompt = "";
+
     if (previousCode) {
-      // Refinement Mode
       systemPrompt = `
-        Sen uzman bir Excel VBA geliştiricisisin.
-        
-        GÖREV: Aşağıdaki MEVCUT VBA kodunu, kullanıcının istediği değişikliklere göre GÜNCELLE.
-        
-        MEVCUT KOD:
-        ${previousCode}
-        
-        KULLANICI DEĞİŞİKLİK İSTEĞİ:
-        "${userPrompt}"
-        
-        KURALLAR:
-        1. SADECE güncellenmiş VBA kodunu döndür.
-        2. Kodun bütünlüğünü bozma.
-        3. ${errorHandlingInstructions}
+        GÖREV: Mevcut VBA kodunu güncelle.
+        MEVCUT KOD: ${previousCode}
+        İSTEK: "${userPrompt}"
+        KURALLAR: ${errorHandlingInstructions}
+        Sadece kodu döndür.
       `;
     } else {
-      // New Generation Mode
       systemPrompt = `
-        Sen dünyanın en iyi Excel VBA (Makro) geliştiricisisin.
-        Kullanıcı sana Excel'de ne yapmak istediğini söyleyecek.
-        Senin görevin bu işi yapan kusursuz, profesyonel, hatasız ve iyi yorumlanmış bir VBA kodu yazmaktır.
-
-        GENEL KURALLAR:
-        1. SADECE VBA kodunu döndür. Başka bir açıklama, sohbet veya markdown ('''vba) ekleme.
-        2. Değişken isimlerini anlamlı (wsData, lastRow vb.) kullan.
-        3. ${errorHandlingInstructions}
-        
+        Sen Excel VBA uzmanısın.
         Kullanıcı İsteği: "${userPrompt}"
+        KURALLAR: 
+        - SADECE VBA kodunu döndür. Markdown yok.
+        - ${errorHandlingInstructions}
       `;
     }
 
@@ -171,13 +136,12 @@ export const generateExcelMacro = async (userPrompt: string, previousCode?: stri
     });
 
     let code = response.text || "";
-    // Clean up markdown code blocks
     code = code.replace(/```vba/g, '').replace(/```/g, '').trim();
     
     return code;
   } catch (error) {
     console.error("VBA oluşturulamadı:", error);
-    throw new Error("VBA kodu oluşturulamadı. Lütfen tekrar deneyin.");
+    throw new Error("VBA kodu oluşturulamadı.");
   }
 };
 

@@ -10,7 +10,7 @@ import {
   BarChart, PaintBucket,
   HelpCircle, Keyboard, Play
 } from 'lucide-react';
-import { generateExcelMacro, generateSmartExcelSolution, SmartSolution } from '../services/geminiService';
+import { generateExcelMacro, generateSmartExcelSolution, SmartSolution, AppSettings } from '../services/geminiService';
 
 interface HistoryItem {
   id: string;
@@ -22,6 +22,7 @@ interface HistoryItem {
 
 interface CodeGeneratorProps {
   initialPrompt?: string;
+  settings: AppSettings;
 }
 
 // Template Data
@@ -249,7 +250,7 @@ const VbaInstructions = () => (
 
 // --- MAIN COMPONENT ---
 
-const CodeGenerator: React.FC<CodeGeneratorProps> = ({ initialPrompt }) => {
+const CodeGenerator: React.FC<CodeGeneratorProps> = ({ initialPrompt, settings }) => {
   // --- STATES ---
   const [prompt, setPrompt] = useState<string>("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -346,12 +347,12 @@ const CodeGenerator: React.FC<CodeGeneratorProps> = ({ initialPrompt }) => {
     
     try {
         if (isVbaRefinement) {
-            const result = await generateExcelMacro(promptToUse, code);
+            const result = await generateExcelMacro(promptToUse, settings, code);
             setCode(result);
             setCachedVBA(result);
             setValidationErrors(validateVbaCode(result));
         } else {
-            const solution: SmartSolution = await generateSmartExcelSolution(promptToUse);
+            const solution: SmartSolution = await generateSmartExcelSolution(promptToUse, settings);
             setSolutionType(solution.type);
             setCode(solution.content);
             setSolutionTitle(solution.title);
@@ -395,7 +396,7 @@ const CodeGenerator: React.FC<CodeGeneratorProps> = ({ initialPrompt }) => {
       }
       setLoading(true);
       try {
-          const vbaCode = await generateExcelMacro(vbaFallbackPrompt || prompt);
+          const vbaCode = await generateExcelMacro(vbaFallbackPrompt || prompt, settings);
           setCode(vbaCode);
           setCachedVBA(vbaCode);
           setValidationErrors(validateVbaCode(vbaCode));

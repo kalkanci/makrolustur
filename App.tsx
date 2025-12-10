@@ -1,12 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import HomeView from './components/HomeView';
-import { Grid3X3, Plus } from 'lucide-react';
+import SettingsModal from './components/SettingsModal';
+import { Grid3X3, Plus, Settings } from 'lucide-react';
+import { AppSettings } from './services/geminiService';
+
+const DEFAULT_SETTINGS: AppSettings = {
+  excelVersion: '365',
+  language: 'TR'
+};
 
 const App: React.FC = () => {
   // State to pass prompt to the generator
   const [generatorPrompt, setGeneratorPrompt] = useState<string>("");
   // Key to force re-render/reset of components
   const [resetKey, setResetKey] = useState<number>(0);
+  
+  // Settings State
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    const saved = localStorage.getItem('xlsm_settings');
+    return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+  });
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Save settings when changed
+  const handleSaveSettings = (newSettings: AppSettings) => {
+    setSettings(newSettings);
+    localStorage.setItem('xlsm_settings', JSON.stringify(newSettings));
+  };
 
   const handleTemplateSelect = (prompt: string) => {
     setGeneratorPrompt(prompt);
@@ -22,6 +42,14 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F2F2F7] text-slate-900 flex flex-col font-sans selection:bg-emerald-200 selection:text-emerald-900 overflow-hidden">
+      
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)}
+        settings={settings}
+        onSave={handleSaveSettings}
+      />
+
       {/* 1. iOS STYLE BLURRED HEADER */}
       <header className="sticky top-0 z-50 border-b border-slate-200/60 bg-white/80 backdrop-blur-xl transition-all duration-300 supports-[backdrop-filter]:bg-white/60">
         <div className="h-14 flex items-center justify-between px-6 relative max-w-[1800px] mx-auto w-full">
@@ -36,8 +64,15 @@ const App: React.FC = () => {
              </div>
           </div>
 
-          {/* Right: New Button (iOS Action Button Style) */}
+          {/* Right: Actions */}
           <div className="flex items-center gap-2">
+             <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100/80 rounded-full transition-colors"
+                title="Ayarlar"
+             >
+                <Settings className="w-5 h-5" />
+             </button>
              <button 
                 onClick={handleNewSession}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#007AFF]/10 text-[#007AFF] hover:bg-[#007AFF]/20 active:scale-95 transition-all font-medium text-sm"
@@ -60,6 +95,7 @@ const App: React.FC = () => {
                 initialPrompt={generatorPrompt} 
                 onTemplateSelect={handleTemplateSelect}
                 onViewChange={() => {}} 
+                settings={settings}
             />
 
             {/* Footer */}
