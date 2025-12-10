@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import HomeView from './components/HomeView';
 import SettingsModal from './components/SettingsModal';
 import { Grid3X3, Plus, Settings } from 'lucide-react';

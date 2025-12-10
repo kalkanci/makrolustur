@@ -62,7 +62,7 @@ export const generateSmartExcelSolution = async (userPrompt: string, settings: A
       DETAYLAR:
       - Type 'SUGGESTION' ise: 'content' alanına virgülle ayrılmış 3-4 öneri yaz.
       - Type 'FORMULA' ise: Ayarlara uygun dilde formül yaz. Ayıraç olarak noktalı virgül (;) kullan.
-      - Type 'VBA' ise: Hata yönetimi içeren tam Sub prosedürü yaz. VBA dili her zaman İngilizcedir (Keywords), ancak yorum satırlarını Türkçe yaz.
+      - Type 'VBA' ise: Çok sağlam hata yönetimi (Error Handling) içeren tam Sub prosedürü yaz. "On Error Resume Next" kullanma (zorunlu haller dışında). Kod sonunda ayarları (ScreenUpdating vb.) mutlaka geri yükle.
       
       Kullanıcı İsteği: "${userPrompt}"
     `;
@@ -102,12 +102,42 @@ export const generateExcelMacro = async (userPrompt: string, settings: AppSettin
     const versionNote = `Kullanıcı Excel ${settings.excelVersion} kullanıyor. Kodun bu versiyonla tam uyumlu olduğundan emin ol.`;
 
     const errorHandlingInstructions = `
-      ZORUNLU KOD YAPISI:
-      1. Performans ayarlarını (ScreenUpdating vb.) kapatıp aç.
-      2. "On Error GoTo ErrorHandler" kullan.
-      3. Değişken tanımlamalarını (Dim) eksiksiz yap.
-      4. ${versionNote}
-      5. Kod içindeki yorum satırları TÜRKÇE olsun.
+      GELİŞMİŞ HATA YÖNETİMİ KURALLARI (ZORUNLU):
+      1. "On Error Resume Next" kullanımından KAÇIN. Sadece nesne kontrolü gibi çok spesifik yerlerde kullan ve hemen ardından "On Error GoTo 0" ile kapat.
+      2. Kodun yapısı ŞU ŞEKİLDE OLMALIDIR:
+         Sub MakroIsmi()
+            Dim ...
+            Dim IslemAdimi As String ' Hatanın nerede olduğunu anlamak için
+            IslemAdimi = "Başlangıç"
+            
+            On Error GoTo ErrorHandler
+            
+            ' Hızlandırma
+            Application.ScreenUpdating = False
+            Application.Calculation = xlCalculationManual
+            Application.DisplayAlerts = False
+            
+            IslemAdimi = "Veriler Hazırlanıyor"
+            ' ... Kodlar ...
+            
+         SafeExit:
+            ' Ayarları Geri Yükle (Hata olsa bile burası çalışmalı)
+            Application.ScreenUpdating = True
+            Application.Calculation = xlCalculationAutomatic
+            Application.DisplayAlerts = True
+            Exit Sub
+            
+         ErrorHandler:
+            MsgBox "Bir hata oluştu!" & vbCrLf & _
+                   "İşlem Adımı: " & IslemAdimi & vbCrLf & _
+                   "Hata Kodu: " & Err.Number & vbCrLf & _
+                   "Açıklama: " & Err.Description, vbCritical, "Hata Raporu"
+            Resume SafeExit
+         End Sub
+
+      3. Değişken isimlerini anlamlı ver (wsSource, lastRow vb.).
+      4. Kod içindeki yorum satırlarını TÜRKÇE yaz.
+      5. ${versionNote}
     `;
 
     let systemPrompt = "";

@@ -5,7 +5,7 @@ import {
   AlertTriangle, Sigma,
   Lightbulb, Info, MousePointerClick,
   FunctionSquare, Home, Zap, Sparkles,
-  LayoutTemplate, ChevronDown, ChevronRight,
+  LayoutTemplate, ChevronRight,
   Eraser, FileJson,
   BarChart, PaintBucket,
   HelpCircle, Keyboard, Play
@@ -207,43 +207,77 @@ const validateVbaCode = (code: string): string[] => {
 
 // --- BEGINNER INSTRUCTION COMPONENTS ---
 
-const InstructionStep = ({ num, text, icon }: { num: number, text: React.ReactNode, icon?: React.ReactNode }) => (
-    <div className="flex items-start gap-3">
-        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center text-xs font-bold mt-0.5">
+const InstructionStep = ({ num, text, subtext }: { num: number, text: React.ReactNode, subtext?: string }) => (
+    <div className="flex items-start gap-4 p-3 bg-white/50 rounded-xl border border-slate-100 hover:bg-white transition-colors">
+        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 text-blue-700 border border-blue-200 flex items-center justify-center text-sm font-bold shadow-sm">
             {num}
         </div>
-        <div className="flex-1 text-sm text-slate-700 leading-snug pt-0.5">
-           {text}
+        <div className="flex-1">
+           <div className="text-sm font-semibold text-slate-800 leading-snug">
+              {text}
+           </div>
+           {subtext && (
+             <div className="text-xs text-slate-500 mt-1 leading-relaxed">
+               {subtext}
+             </div>
+           )}
         </div>
-        {icon && <div className="text-slate-400">{icon}</div>}
     </div>
 );
 
 const FormulaInstructions = () => (
     <div className="bg-emerald-50/70 border border-emerald-100 rounded-xl p-5 mb-6">
-        <h4 className="flex items-center gap-2 text-sm font-bold text-emerald-800 mb-4">
-            <Info className="w-4 h-4" />
-            Nasıl Kullanılır? (Formül)
+        <h4 className="flex items-center gap-2 text-base font-bold text-emerald-800 mb-4">
+            <Info className="w-5 h-5" />
+            Adım Adım Kullanım (Formül)
         </h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <InstructionStep num={1} text={<span>Sağdaki <b>Kopyala</b> butonuna basarak formülü alın.</span>} icon={<Copy className="w-4 h-4" />} />
-            <InstructionStep num={2} text="Excel'de işlem yapmak istediğiniz hücreye çift tıklayın." icon={<MousePointerClick className="w-4 h-4" />} />
-            <InstructionStep num={3} text={<span>Formülü yapıştırın (CTRL+V) ve <b>Enter</b> tuşuna basın.</span>} icon={<Keyboard className="w-4 h-4" />} />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-white p-3 rounded-lg border border-emerald-100 shadow-sm flex flex-col gap-2 text-center items-center">
+                <div className="bg-emerald-100 p-2 rounded-full text-emerald-600"><Copy className="w-4 h-4"/></div>
+                <p className="text-sm font-medium text-slate-700">1. Formülü Kopyala</p>
+                <p className="text-xs text-slate-500">Sağ üstteki "Kopyala" butonuna bas.</p>
+            </div>
+            <div className="bg-white p-3 rounded-lg border border-emerald-100 shadow-sm flex flex-col gap-2 text-center items-center">
+                <div className="bg-emerald-100 p-2 rounded-full text-emerald-600"><MousePointerClick className="w-4 h-4"/></div>
+                <p className="text-sm font-medium text-slate-700">2. Excel'i Aç</p>
+                <p className="text-xs text-slate-500">Sonucu görmek istediğin hücreye çift tıkla.</p>
+            </div>
+            <div className="bg-white p-3 rounded-lg border border-emerald-100 shadow-sm flex flex-col gap-2 text-center items-center">
+                <div className="bg-emerald-100 p-2 rounded-full text-emerald-600"><Check className="w-4 h-4"/></div>
+                <p className="text-sm font-medium text-slate-700">3. Yapıştır</p>
+                <p className="text-xs text-slate-500">CTRL+V yap ve Enter'a bas.</p>
+            </div>
         </div>
     </div>
 );
 
 const VbaInstructions = () => (
-    <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-5 mb-6">
-        <h4 className="flex items-center gap-2 text-sm font-bold text-blue-800 mb-4">
-            <HelpCircle className="w-4 h-4" />
-            Nasıl Kullanılır? (Makro)
+    <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-6 mb-6">
+        <h4 className="flex items-center gap-2 text-base font-bold text-blue-900 mb-5">
+            <HelpCircle className="w-5 h-5" />
+            Hiç Bilmeyenler İçin: Makro Nasıl Çalıştırılır?
         </h4>
         <div className="grid grid-cols-1 gap-3">
-            <InstructionStep num={1} text={<span>Excel'de klavyenizden <b>ALT</b> ve <b>F11</b> tuşlarına aynı anda basın.</span>} icon={<Keyboard className="w-4 h-4" />} />
-            <InstructionStep num={2} text={<span>Açılan pencerenin üst menüsünden <b>Insert</b> &gt; <b>Module</b> seçeneğine tıklayın.</span>} />
-            <InstructionStep num={3} text="Aşağıdaki kodu açılan beyaz sayfaya yapıştırın." icon={<Copy className="w-4 h-4" />} />
-            <InstructionStep num={4} text={<span>Çalıştırmak için klavyeden <b>F5</b> tuşuna basın.</span>} icon={<Play className="w-4 h-4" />} />
+            <InstructionStep 
+              num={1} 
+              text={<span>Geliştirici Ekranını Açın</span>} 
+              subtext="Excel açıkken, klavyenizin en sol altındaki ALT tuşuna basılı tutun ve F11 tuşuna bir kez basın. Gri bir pencere açılacak."
+            />
+            <InstructionStep 
+              num={2} 
+              text={<span>Kod Sayfası Ekleyin</span>} 
+              subtext="Açılan gri pencerenin en üst menüsünden 'Insert' yazısına tıklayın, açılan listeden 'Module' seçeneğini seçin. Beyaz boş bir sayfa açılır."
+            />
+            <InstructionStep 
+              num={3} 
+              text={<span>Kodu Yapıştırın</span>} 
+              subtext="Aşağıdaki kodun tamamını kopyalayın (Kopyala butonu ile). O beyaz sayfaya sağ tıklayıp 'Paste' (Yapıştır) deyin."
+            />
+            <InstructionStep 
+              num={4} 
+              text={<span>Çalıştırın!</span>} 
+              subtext="Klavyeden F5 tuşuna basın veya üstteki yeşil 'Play' (▶) üçgen butonuna tıklayın. Makronuz çalışacaktır."
+            />
         </div>
     </div>
 );

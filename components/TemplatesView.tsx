@@ -1,10 +1,10 @@
 import React from 'react';
 import { 
-  Eraser, Search, FileText, FileJson, Sheet, Save, 
+  Eraser, Search, FileJson, Sheet, Save, 
   Lock, PaintBucket, Table, Calculator, 
-  RefreshCw, Mail, Database, BarChart,
+  Mail, Database, BarChart,
   ArrowRight, Filter, Eye, Zap, Type, Layers,
-  Scissors, Calendar, PieChart, Image, Link, List
+  Scissors, Calendar, PieChart, Image, List
 } from 'lucide-react';
 
 interface TemplatesViewProps {

@@ -10,7 +10,7 @@ interface HomeViewProps {
   settings: AppSettings;
 }
 
-const HomeView: React.FC<HomeViewProps> = ({ initialPrompt, onViewChange, onTemplateSelect, settings }) => {
+const HomeView: React.FC<HomeViewProps> = ({ initialPrompt, settings }) => {
   
   return (
     <div className="max-w-[1600px] mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-6 duration-700 ease-[cubic-bezier(0.2,0.8,0.2,1)] flex flex-col min-h-[calc(100vh-140px)]">
