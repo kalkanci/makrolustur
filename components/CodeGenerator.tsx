@@ -8,7 +8,7 @@ import {
   LayoutTemplate, ChevronRight,
   Eraser, FileJson,
   BarChart, PaintBucket,
-  HelpCircle, Keyboard, Play
+  HelpCircle
 } from 'lucide-react';
 import { generateExcelMacro, generateSmartExcelSolution, SmartSolution, AppSettings } from '../services/geminiService';
 
